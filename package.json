@@ -1,0 +1,61 @@
+{
+  "name": "gw-auth",
+  "version": "0.1.1",
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.js",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.mjs",
+      "require": "./dist/server/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.mjs",
+      "require": "./dist/client/index.js"
+    }
+  },
+  "scripts": {
+    "build": "NODE_OPTIONS='--max-old-space-size=16384' tsup",
+    "dev": "tsup --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dndnsoft/gw-auth.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dndnsoft/gw-auth/issues"
+  },
+  "homepage": "https://github.com/dndnsoft/gw-auth#readme",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie": "^1.1.1",
+    "gw-file": "^0.1.1",
+    "gw-response": "^0.1.7",
+    "gw-result": "^0.1.7",
+    "jose": "^6.2.2",
+    "nodemailer": "^8.0.4",
+    "uuid": "^13.0.0"
+  },
+  "peerDependencies": {
+    "react": "^19",
+    "react-dom": "^19"
+  }
+}
