@@ -8,3 +8,4 @@ export * from "./auth_service";
 export * from "./auth_repository";
 export * from "./handlers";
 export * from "./cookie_manager";
+export * from "./signup_with_thirdparty";
