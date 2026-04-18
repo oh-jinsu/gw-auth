@@ -5,21 +5,20 @@ import {
   type SerializeOptions,
 } from "cookie";
 
+export const defaultCookieOptions: SerializeOptions = {
+  path: "/",
+  httpOnly: process.env.NODE_ENV === "production",
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict",
+};
+
 export class CookieManager {
   name: string;
   options: SerializeOptions;
 
-  constructor(
-    name: string,
-    isProduction = process.env.NODE_ENV === "production",
-  ) {
+  constructor(name: string, options: SerializeOptions = defaultCookieOptions) {
     this.name = name;
-    this.options = {
-      path: "/",
-      httpOnly: isProduction,
-      secure: isProduction,
-      sameSite: "strict",
-    };
+    this.options = options;
   }
 
   async parseFromRequest(
@@ -59,6 +58,19 @@ export class CookieManager {
       ...this.options,
       maxAge: !value ? 0 : undefined,
       ...serializeOptions,
+    });
+  }
+}
+
+export class SessionCookieManager extends CookieManager {
+  serialize(
+    value: string | undefined,
+    serializeOptions?: SerializeOptions,
+  ): Promise<string> {
+    return super.serialize(value, {
+      ...serializeOptions,
+      maxAge: undefined,
+      expires: undefined,
     });
   }
 }
