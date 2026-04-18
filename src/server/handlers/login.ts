@@ -22,12 +22,6 @@ export const loginHandler = async (
 
   const { accessToken, refreshToken } = result.value;
 
-  const contentType = request.headers.get("Content-Type") || "";
-
-  if (contentType.includes("application/json")) {
-    return httpCreated({ accessToken, refreshToken });
-  }
-
   const [accessTokenSetCookie, refreshTokenSetCookie] = await Promise.all([
     authService.getAccessTokenSetCookie(accessToken),
     authService.getRefreshTokenSetCookie(refreshToken),

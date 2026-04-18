@@ -72,7 +72,9 @@ export function AuthProvider({
       return exceptionFromResponse(res);
     }
 
-    return ok((await res.json()) as AccessTokenPayload);
+    const payload = await res.json();
+
+    return ok(payload as AccessTokenPayload);
   };
 
   const loginWithGoogle = async (redirectUrl = "/") => {
