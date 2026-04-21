@@ -35,9 +35,14 @@ export class AuthService<TFile = unknown> {
   async verify(request: Request) {
     const accessToken = await this.getAccessTokenFromRequest(request);
 
-    if (accessToken) {
-      return this.accessTokenManager.verify(accessToken);
+    if (!accessToken) {
+      return exception(
+        "ACCESS_TOKEN_NOT_FOUND",
+        "액세스 토큰이 존재하지 않습니다.",
+      );
     }
+
+    return this.accessTokenManager.verify(accessToken);
   }
 
   async getAccessTokenFromRequest(request: Request) {
