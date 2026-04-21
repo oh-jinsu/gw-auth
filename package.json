@@ -1,6 +1,6 @@
 {
   "name": "gw-auth",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "types": "./dist/index.d.ts",
   "main": "./dist/index.mjs",
   "module": "./dist/index.js",
@@ -48,9 +48,9 @@
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cookie": "^1.1.1",
-    "gw-file": "^0.1.1",
-    "gw-response": "^0.1.7",
-    "gw-result": "^0.1.7",
+    "gw-file": "^0.1.5",
+    "gw-response": "^0.1.8",
+    "gw-result": "^0.1.9",
     "jose": "^6.2.2",
     "nodemailer": "^8.0.4",
     "uuid": "^13.0.0"
