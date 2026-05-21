@@ -32,7 +32,7 @@ export class JWTManager<TPayload extends JWTPayload = JWTPayload> {
     return ok(result.value.payload as TPayload);
   }
 
-  async sign(payload: TPayload) {
+  async sign(payload: Omit<TPayload, "iat" | "exp">) {
     let builder = new SignJWT(payload)
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })
       .setIssuedAt();
