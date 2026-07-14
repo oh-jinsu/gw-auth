@@ -1,6 +1,6 @@
 {
   "name": "gw-auth",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "types": "./dist/index.d.ts",
   "main": "./dist/index.mjs",
   "module": "./dist/index.js",
@@ -39,7 +39,7 @@
   "description": "",
   "devDependencies": {
     "@types/node": "^25.3.2",
-    "@types/nodemailer": "^7.0.11",
+    "@types/nodemailer": "^8",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tsup": "^8.5.1",
@@ -52,8 +52,8 @@
     "gw-response": "^0.1.8",
     "gw-result": "^0.1.9",
     "jose": "^6.2.2",
-    "nodemailer": "^8.0.4",
-    "uuid": "^13.0.0"
+    "nodemailer": "^9",
+    "uuid": "^14"
   },
   "peerDependencies": {
     "react": "^19",
