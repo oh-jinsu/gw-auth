@@ -41,14 +41,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dndnsoft/gw-auth.git"
+    "url": "git+https://github.com/oh-jinsu/gw-auth.git"
   },
   "author": "",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/dndnsoft/gw-auth/issues"
+    "url": "https://github.com/oh-jinsu/gw-auth/issues"
   },
-  "homepage": "https://github.com/dndnsoft/gw-auth#readme",
+  "homepage": "https://github.com/oh-jinsu/gw-auth#readme",
   "description": "",
   "devDependencies": {
     "@types/express": "^5.0.6",
