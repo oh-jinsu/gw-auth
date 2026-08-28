@@ -3,8 +3,8 @@ import type { AccessTokenPayload } from "../jwt_payload";
 import {
   Exception,
   exception,
-  exceptionFromResponse,
   fetchWithResult,
+  httpException,
   ok,
   type Result,
 } from "gw-result";
@@ -69,7 +69,7 @@ export function AuthProvider({
     const res = fetchResult.value;
 
     if (!res.ok) {
-      return exceptionFromResponse(res);
+      return httpException(res);
     }
 
     const payload = await res.json();
@@ -122,7 +122,7 @@ export function AuthProvider({
     const res = fetchResult.value;
 
     if (!res.ok) {
-      return exceptionFromResponse(res);
+      return httpException(res);
     }
 
     return ok();
@@ -148,7 +148,7 @@ export function AuthProvider({
     const res = fetchResult.value;
 
     if (!res.ok) {
-      return exceptionFromResponse(res);
+      return httpException(res);
     }
 
     return ok(await res.json());
@@ -173,7 +173,7 @@ export function AuthProvider({
     const res = fetchResult.value;
 
     if (!res.ok) {
-      return exceptionFromResponse(res);
+      return httpException(res);
     }
 
     return ok();
@@ -199,7 +199,7 @@ export function AuthProvider({
     const res = fetchResult.value;
 
     if (!res.ok) {
-      return exceptionFromResponse(res);
+      return httpException(res);
     }
 
     return ok();

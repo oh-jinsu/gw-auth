@@ -21,7 +21,7 @@ export interface AuthProvider {
         accessToken: string;
         refreshToken: string;
       },
-      UserNotFoundException | Exception | Error
+      unknown
     >
   >;
 }

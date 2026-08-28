@@ -22,7 +22,9 @@ export class JWTManager<TPayload extends JWTPayload = JWTPayload> {
 
   async verify(token: string) {
     const result = await resultFrom(() =>
-      jwtVerify(token, new TextEncoder().encode(this.secret)),
+      jwtVerify(token, new TextEncoder().encode(this.secret), {
+        issuer: this.issuer,
+      }),
     );
 
     if (result.isErr) {

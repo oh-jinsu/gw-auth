@@ -1,10 +1,16 @@
 {
   "name": "gw-auth",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "types": "./dist/index.d.ts",
   "main": "./dist/index.mjs",
   "module": "./dist/index.js",
   "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "MIGRATION.md",
+    "CHANGELOG.md"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -16,6 +22,11 @@
       "import": "./dist/server/index.mjs",
       "require": "./dist/server/index.js"
     },
+    "./server/express": {
+      "types": "./dist/server/express/index.d.ts",
+      "import": "./dist/server/express/index.mjs",
+      "require": "./dist/server/express/index.js"
+    },
     "./client": {
       "types": "./dist/client/index.d.ts",
       "import": "./dist/client/index.mjs",
@@ -24,7 +35,9 @@
   },
   "scripts": {
     "build": "NODE_OPTIONS='--max-old-space-size=16384' tsup",
-    "dev": "tsup --watch"
+    "dev": "tsup --watch",
+    "prepack": "npm run build",
+    "test": "npm run build && node --test test/*.test.mjs"
   },
   "repository": {
     "type": "git",
@@ -38,10 +51,12 @@
   "homepage": "https://github.com/dndnsoft/gw-auth#readme",
   "description": "",
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^25.3.2",
     "@types/nodemailer": "^8",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "express": "^5.2.1",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   },
@@ -50,13 +65,19 @@
     "cookie": "^1.1.1",
     "gw-file": "^0.1.5",
     "gw-response": "^0.1.8",
-    "gw-result": "^0.1.9",
+    "gw-result": "^0.3.0",
     "jose": "^6.2.2",
     "nodemailer": "^9",
     "uuid": "^14"
   },
   "peerDependencies": {
+    "express": "^5.0.0",
     "react": "^19",
     "react-dom": "^19"
+  },
+  "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    }
   }
 }
