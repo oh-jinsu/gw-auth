@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- Fixed Apple client-secret creation with jose 6 by providing an explicit empty
+  JWT payload.
+
 ## 0.2.0
 
 - Added `SessionAuthService` and `SessionRepository` for independent,

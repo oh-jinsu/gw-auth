@@ -92,7 +92,7 @@ export class AppleAuthorizationCodeVerifier implements SocialIdentityVerifier {
   private async clientSecret() {
     const key = await importPKCS8(this.options.authKey, "ES256");
 
-    return new SignJWT()
+    return new SignJWT({})
       .setProtectedHeader({ alg: "ES256", kid: this.options.keyId })
       .setIssuedAt()
       .setIssuer(this.options.teamId)
