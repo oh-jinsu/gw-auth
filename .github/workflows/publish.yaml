@@ -11,27 +11,36 @@ on:
       - package*.json
       - .github/workflows/publish.yaml
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
 
       - name: Check package version
-        id: cpv
-        uses: PostHog/check-package-version@v2
+        id: version
+        run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+            echo "is-new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is-new=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: npm publish
-        if: steps.cpv.outputs.is-new-version == 'true'
+        if: steps.version.outputs.is-new == 'true'
         run: |
-          rm -rf package-lock.json
-          npm i
-          npm run build
+          npm ci
+          npm test
           npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
