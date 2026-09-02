@@ -44,24 +44,25 @@ import { AuthProvider, useAuth } from "gw-auth/client";
 
 `gw-auth` does not own your database. Instead, you provide an
 `AuthRepository` implementation that knows how to find and create users,
-credentials, third-party auth records, and refresh tokens.
+credentials, and third-party auth records. Refresh sessions use a separate
+`SessionRepository`.
 
 The server service issues:
 
 - an access token for short-lived authentication
-- a refresh token stored as a bcrypt hash in your user record
+- a rotating refresh token stored as a SHA-256 hash in its session row
 - optional `Set-Cookie` headers for browser-based sessions
 
 The exported handlers are framework-agnostic functions built around standard
 Web `Request` and `Response` objects, so they fit route handlers in frameworks
 such as Next.js, Remix, Hono, and similar runtimes.
 
-## Recommended Mobile Session Architecture (0.2+)
+## Refresh Session Architecture (0.3+)
 
-Mobile apps should use `SessionAuthService` rather than storing a third-party
-Google, Kakao, or Apple token as the application's bearer token. The provider
-credential is exchanged once, then the application issues its own short-lived
-access token and rotating refresh token.
+Browser and native clients should use `SessionAuthService`. Browser clients
+transport tokens in `HttpOnly` cookies, while native clients return them as
+JSON and keep the refresh token in platform secure storage. Both can share the
+same session table and still use distinct JWT issuers.
 
 ```ts
 import {
@@ -91,12 +92,12 @@ export const sessions = new SessionAuthService(
 );
 ```
 
-The repository stores one row per device session. Its
+The repository stores one row per browser or device session. Its
 `rotateRefreshSession` implementation must update only when both the session
 id and `expectedTokenHash` match, and return `false` otherwise. This
 compare-and-swap rule makes concurrent replay of an already rotated token fail.
 
-The 0.2 session service guarantees these invariants:
+The session service guarantees these invariants:
 
 - refresh tokens contain a new JWT `jti` on every issue and rotation
 - the complete refresh token is stored as a SHA-256 hash, never plaintext
@@ -136,18 +137,14 @@ authorization code server-side, verifies the returned identity-token signature,
 and returns the provider refresh token needed for account-deletion revocation.
 Store that Apple refresh token encrypted at rest in the consuming application.
 
-See [MIGRATION.md](./MIGRATION.md) for the 0.1 to 0.2 migration boundary.
+See [MIGRATION.md](./MIGRATION.md) for version migration boundaries.
 
-## Legacy Single-Session Repository Interface
+## Repository Interfaces
 
-`AuthService` remains available for existing browser and cookie integrations.
-It stores one refresh-token hash on the user row, so a new login replaces any
-previous login. New mobile integrations should use `SessionAuthService`.
-
-Implement this interface against your database:
+Implement the account and session repositories against your database:
 
 ```ts
-import type { AuthRepository } from "gw-auth/server";
+import type { AuthRepository, SessionRepository } from "gw-auth/server";
 
 export const authRepository: AuthRepository = {
   async findCredentialById(id) {
@@ -163,15 +160,11 @@ export const authRepository: AuthRepository = {
   },
 
   async findUserById(userId) {
-    // Return { id, role, name, refreshToken } or undefined.
-  },
-
-  async updateUserRefreshToken(userId, hashedRefreshToken) {
-    // Store the hashed refresh token, or null on logout.
+    // Return { id, role, name } or undefined.
   },
 
   async createUser(userData) {
-    // Create and return { id, role, name, refreshToken }.
+    // Create and return { id, role, name }.
   },
 
   async findThirdPartyAuth(provider, providerId) {
@@ -181,6 +174,10 @@ export const authRepository: AuthRepository = {
   async createThirdPartyAuth({ id, provider, userId }) {
     // Link a provider account to a local user.
   },
+};
+
+export const sessionRepository: SessionRepository = {
+  // Store, find, rotate, and delete refresh-session rows.
 };
 ```
 
@@ -193,20 +190,19 @@ import {
   AuthService,
   CookieManager,
   JWTManager,
+  type SessionAccessPayload,
+  type SessionRefreshPayload,
 } from "gw-auth/server";
-import type {
-  AccessTokenPayload,
-  RefreshTokenPayload,
-} from "gw-auth";
 import { authRepository } from "./auth-repository";
+import { sessionRepository } from "./session-repository";
 
-const accessTokenManager = new JWTManager<AccessTokenPayload>({
+const accessTokenManager = new JWTManager<SessionAccessPayload>({
   secret: process.env.ACCESS_TOKEN_SECRET!,
   expiresIn: "30m",
   issuer: "my-app",
 });
 
-const refreshTokenManager = new JWTManager<RefreshTokenPayload>({
+const refreshTokenManager = new JWTManager<SessionRefreshPayload>({
   secret: process.env.REFRESH_TOKEN_SECRET!,
   expiresIn: "30d",
   issuer: "my-app",
@@ -214,6 +210,7 @@ const refreshTokenManager = new JWTManager<RefreshTokenPayload>({
 
 export const authService = new AuthService({
   authRepository,
+  sessionRepository,
   accessTokenManager,
   accessTokenCookieStore: new CookieManager("access_token"),
   refreshTokenManager,
@@ -264,10 +261,7 @@ export async function refresh(request: Request) {
 }
 
 export async function logout(request: Request) {
-  const authResult = await authService.verify(request);
-  const auth = authResult.isErr ? undefined : authResult.value;
-
-  return logoutHandler({ authService })(auth)(request);
+  return logoutHandler(request, { authService });
 }
 ```
 

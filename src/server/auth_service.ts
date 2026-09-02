@@ -2,15 +2,18 @@ import bcryptjs from "bcryptjs";
 import { JWTManager } from "./jwt_manager";
 import type { AuthRepository } from "./auth_repository";
 import { CookieManager } from "./cookie_manager";
-import type { AccessTokenPayload, RefreshTokenPayload } from "../jwt_payload";
-import { exception, ok, resultFrom } from "gw-result";
+import { exception } from "gw-result";
+import { SessionAuthService } from "./session/session_auth_service";
+import type { SessionAccessPayload, SessionRefreshPayload } from "./session/session_payload";
+import type { SessionRepository } from "./session/session_repository";
 
 export class AuthService<TFile = unknown> {
   authRepository: AuthRepository<TFile>;
-  accessTokenManager: JWTManager<AccessTokenPayload>;
+  accessTokenManager: JWTManager<SessionAccessPayload>;
   accessTokenCookieManager: CookieManager;
-  refreshTokenManager: JWTManager<RefreshTokenPayload>;
+  refreshTokenManager: JWTManager<SessionRefreshPayload>;
   refreshTokenCookieManager: CookieManager;
+  sessionAuthService: SessionAuthService;
 
   constructor({
     authRepository,
@@ -18,18 +21,25 @@ export class AuthService<TFile = unknown> {
     accessTokenCookieStore,
     refreshTokenManager,
     refreshTokenCookieStore,
+    sessionRepository,
   }: {
     authRepository: AuthRepository<TFile>;
-    accessTokenManager: JWTManager<AccessTokenPayload>;
+    accessTokenManager: JWTManager<SessionAccessPayload>;
     accessTokenCookieStore: CookieManager;
-    refreshTokenManager: JWTManager<RefreshTokenPayload>;
+    refreshTokenManager: JWTManager<SessionRefreshPayload>;
     refreshTokenCookieStore: CookieManager;
+    sessionRepository: SessionRepository;
   }) {
     this.authRepository = authRepository;
     this.accessTokenManager = accessTokenManager;
     this.accessTokenCookieManager = accessTokenCookieStore;
     this.refreshTokenManager = refreshTokenManager;
     this.refreshTokenCookieManager = refreshTokenCookieStore;
+    this.sessionAuthService = new SessionAuthService(
+      sessionRepository,
+      accessTokenManager,
+      refreshTokenManager,
+    );
   }
 
   async verify(request: Request) {
@@ -99,75 +109,15 @@ export class AuthService<TFile = unknown> {
   }
 
   async issueTokenPair(user: { id: string; role: string; name: string }) {
-    const signingResult = await this.refreshTokenManager.sign({
-      userId: user.id,
-      role: user.role,
-      name: user.name,
-    });
-
-    if (signingResult.isErr) {
-      return signingResult;
-    }
-
-    const refreshToken = signingResult.value;
-
-    const hashedRefreshToken = bcryptjs.hashSync(refreshToken, 10);
-
-    const updateResult = await resultFrom(() =>
-      this.authRepository.updateUserRefreshToken(user.id, hashedRefreshToken),
-    );
-
-    if (updateResult.isErr) {
-      return updateResult;
-    }
-
-    const accessTokenResult = await this.issueAccessToken(user);
-
-    if (accessTokenResult.isErr) {
-      return accessTokenResult;
-    }
-
-    const accessToken = accessTokenResult.value;
-
-    return ok({ refreshToken, accessToken });
+    return this.sessionAuthService.issueTokenPair(user);
   }
 
-  async refreshAccessToken(refreshToken: string) {
-    const verifyResult = await this.refreshTokenManager.verify(refreshToken);
+  refreshTokenPair(refreshToken: string) {
+    return this.sessionAuthService.refreshTokenPair(refreshToken);
+  }
 
-    if (verifyResult.isErr) {
-      return verifyResult;
-    }
-
-    const payload = verifyResult.value;
-
-    const { userId } = payload;
-
-    if (typeof userId !== "string") {
-      return exception("INVALID_TOKEN", "토큰이 유효하지 않습니다.");
-    }
-
-    const user = await this.authRepository.findUserById(userId);
-
-    if (!user) {
-      return exception("USER_NOT_FOUND", "사용자를 찾을 수 없습니다.");
-    }
-
-    if (!user.refreshToken) {
-      return exception(
-        "REFRESH_TOKEN_NOT_FOUND",
-        "인증 정보가 존재하지 않습니다.",
-      );
-    }
-
-    if (!(await bcryptjs.compare(refreshToken, user.refreshToken))) {
-      return exception(
-        "INVALID_REFRESH_TOKEN",
-        "인증 정보가 유효하지 않습니다.",
-      );
-    }
-
-    return this.issueAccessToken(user);
+  revokeSession(refreshToken: string) {
+    return this.sessionAuthService.revokeSession(refreshToken);
   }
 
   async getAccessTokenSetCookie(accessToken: string | undefined) {

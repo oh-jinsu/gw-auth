@@ -20,13 +20,23 @@ export const refreshHandler = async (
     });
   }
 
-  const refreshResult = await authService.refreshAccessToken(refreshToken);
+  const refreshResult = await authService.refreshTokenPair(refreshToken);
 
   if (refreshResult.isErr) {
     return httpExceptionFromErr(401, refreshResult);
   }
 
-  const accessToken = refreshResult.value;
+  const { accessToken, refreshToken: nextRefreshToken } = refreshResult.value;
+  const headers = new Headers();
+  const cookies = await Promise.all([
+    authService.getAccessTokenSetCookie(accessToken),
+    authService.getRefreshTokenSetCookie(nextRefreshToken),
+  ]);
 
-  return httpCreated({ accessToken });
+  cookies.forEach((cookie) => headers.append("Set-Cookie", cookie));
+
+  return httpCreated(
+    { accessToken, refreshToken: nextRefreshToken },
+    { headers },
+  );
 };

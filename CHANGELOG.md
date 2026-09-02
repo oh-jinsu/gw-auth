@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- Changed browser `AuthService` sessions to use `SessionRepository` rows rather
+  than a single refresh-token hash on each user.
+- Rotated both access and refresh cookies during browser refresh.
+- Revoked only the current browser session during logout.
+- Removed `refreshToken` and `updateUserRefreshToken` from `AuthRepository`.
+
 ## 0.2.1
 
 - Fixed Apple client-secret creation with jose 6 by providing an explicit empty

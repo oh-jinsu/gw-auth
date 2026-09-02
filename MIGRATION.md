@@ -1,4 +1,22 @@
-# Migrating from gw-auth 0.1 to 0.2
+# Migrating gw-auth
+
+## Migrating from 0.2 to 0.3
+
+Version 0.3 moves browser `AuthService` refresh tokens into the same rotating
+session repository used by native applications.
+
+1. Add `sessionRepository` when constructing `AuthService`.
+2. Remove `refreshToken` from user rows and from `findUserById` and
+   `createUser` return values.
+3. Remove `updateUserRefreshToken` from `AuthRepository`.
+4. Move existing browser users to a fresh login. Legacy refresh tokens cannot
+   be converted because only their bcrypt hashes were stored.
+5. Expect refresh responses to rotate and return both `accessToken` and
+   `refreshToken`, and to replace both browser cookies.
+6. Call `logoutHandler(request, { authService })`; an access-token payload is
+   no longer required to revoke the current refresh session.
+
+## Migrating from 0.1 to 0.2
 
 ## Version boundary
 

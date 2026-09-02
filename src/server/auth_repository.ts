@@ -16,15 +16,9 @@ export interface AuthRepository<TFile = unknown> {
               id: string;
               role: string;
               name: string;
-              refreshToken: string | null;
           }
         | undefined
     >;
-
-    updateUserRefreshToken(
-        userId: string,
-        hashedRefreshToken: string | null,
-    ): Promise<void>;
 
     createUser(userData: {
         id: string;
@@ -36,7 +30,6 @@ export interface AuthRepository<TFile = unknown> {
         id: string;
         role: string;
         name: string;
-        refreshToken: string | null;
     }>;
 
     findThirdPartyAuth(

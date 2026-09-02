@@ -1,27 +1,26 @@
 import type { AuthService } from "../auth_service";
-import type { AccessTokenPayload } from "../../jwt_payload";
 import { httpNoContent } from "gw-response";
 
-export const logoutHandler =
-  ({ authService }: { authService: AuthService }) =>
-  (auth: AccessTokenPayload | undefined) =>
-  async (request: Request) => {
-    await authService.authRepository.updateUserRefreshToken(
-      auth?.userId as string,
-      null,
-    );
+export const logoutHandler = async (
+  request: Request,
+  { authService }: { authService: AuthService },
+) => {
+  const refreshToken =
+    (await authService.getRefreshTokenFromCookies(request)) ||
+    request.headers.get("Authorization")?.replace("Bearer ", "");
 
-    const headers = new Headers();
+  if (refreshToken) {
+    await authService.revokeSession(refreshToken);
+  }
 
-    const [accessTokenSetCookie, refreshTokenSetCookie] = await Promise.all([
-      authService.getAccessTokenSetCookie(undefined),
-      authService.getRefreshTokenSetCookie(undefined),
-    ]);
+  const headers = new Headers();
 
-    headers.append("Set-Cookie", accessTokenSetCookie);
-    headers.append("Set-Cookie", refreshTokenSetCookie);
+  const cookies = await Promise.all([
+    authService.getAccessTokenSetCookie(undefined),
+    authService.getRefreshTokenSetCookie(undefined),
+  ]);
 
-    return httpNoContent({
-      headers,
-    });
-  };
+  cookies.forEach((cookie) => headers.append("Set-Cookie", cookie));
+
+  return httpNoContent({ headers });
+};
