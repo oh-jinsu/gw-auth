@@ -3,13 +3,17 @@
       "target": "es2022",
       "module": "esnext",
       "moduleResolution": "bundler",
+      "baseUrl": ".",
+      "paths": {
+        "gw-auth/core": ["./src/core/index.ts"]
+      },
       "esModuleInterop": true,
       "outDir": "dist/esm",
-      "jsx": "react-jsx",
       "declaration": true,
+      "jsx": "react-jsx",
       "strict": true,
       "skipLibCheck": true,
       "verbatimModuleSyntax": true,
     },
-    "include": ["src"]
+    "include": ["src", "test/*.type-test.ts"]
   }

@@ -1,9 +1,29 @@
 import { defineConfig } from "tsup";
 
-export default defineConfig({
-  entry: ["src/**/*.ts", "src/**/*.tsx"], // Your entry file(s)
-  format: ["cjs", "esm"], // Output both CommonJS (.cjs) and ESM (.js/.mjs)
-  dts: true, // Generate .d.ts files for both formats
+const shared = {
+  format: ["cjs", "esm"] as const,
+  dts: true,
   splitting: false,
-  clean: true, // Clean dist folder before build
-});
+  external: ["gw-auth/core"],
+};
+
+export default defineConfig([
+  {
+    ...shared,
+    entry: ["src/core/index.ts"],
+    outDir: "dist/core",
+    clean: true,
+  },
+  {
+    ...shared,
+    entry: ["src/nextjs/index.ts"],
+    outDir: "dist/nextjs/server",
+    clean: true,
+  },
+  {
+    ...shared,
+    entry: ["src/nextjs/client/index.ts"],
+    outDir: "dist/nextjs/client",
+    clean: true,
+  },
+]);

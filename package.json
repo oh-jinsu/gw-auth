@@ -1,83 +1,87 @@
 {
   "name": "gw-auth",
-  "version": "0.3.0",
-  "types": "./dist/index.d.ts",
-  "main": "./dist/index.mjs",
-  "module": "./dist/index.js",
+  "version": "0.4.0",
+  "description": "Framework-neutral TypeScript authentication core with explicit Next.js adapters.",
+  "author": "Jinsu Oh",
   "sideEffects": false,
   "files": [
     "dist",
     "README.md",
     "MIGRATION.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.mjs",
+      "require": "./dist/core/index.js"
     },
-    "./server": {
-      "types": "./dist/server/index.d.ts",
-      "import": "./dist/server/index.mjs",
-      "require": "./dist/server/index.js"
+    "./nextjs": {
+      "types": "./dist/nextjs/server/index.d.ts",
+      "import": "./dist/nextjs/server/index.mjs",
+      "require": "./dist/nextjs/server/index.js"
     },
-    "./server/express": {
-      "types": "./dist/server/express/index.d.ts",
-      "import": "./dist/server/express/index.mjs",
-      "require": "./dist/server/express/index.js"
-    },
-    "./client": {
-      "types": "./dist/client/index.d.ts",
-      "import": "./dist/client/index.mjs",
-      "require": "./dist/client/index.js"
+    "./nextjs/client": {
+      "types": "./dist/nextjs/client/index.d.ts",
+      "import": "./dist/nextjs/client/index.mjs",
+      "require": "./dist/nextjs/client/index.js"
     }
   },
   "scripts": {
-    "build": "NODE_OPTIONS='--max-old-space-size=16384' tsup",
+    "build": "tsup",
     "dev": "tsup --watch",
     "prepack": "npm run build",
-    "test": "npm run build && node --test test/*.test.mjs"
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && npm run build && node --test test/*.test.mjs"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/oh-jinsu/gw-auth.git"
   },
-  "author": "",
   "license": "MIT",
+  "keywords": [
+    "authentication",
+    "typescript",
+    "jwt",
+    "oauth",
+    "nextjs",
+    "refresh-token"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "bugs": {
     "url": "https://github.com/oh-jinsu/gw-auth/issues"
   },
   "homepage": "https://github.com/oh-jinsu/gw-auth#readme",
-  "description": "",
   "devDependencies": {
-    "@types/express": "^5.0.6",
     "@types/node": "^25.3.2",
-    "@types/nodemailer": "^8",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "express": "^5.2.1",
+    "@types/react": "^19.2.18",
+    "next": "^16.3.4",
+    "react": "^19.2.8",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   },
-  "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "cookie": "^1.1.1",
-    "gw-file": "^0.1.5",
-    "gw-response": "^0.1.8",
-    "gw-result": "^0.3.0",
-    "jose": "^6.2.2",
-    "nodemailer": "^9",
-    "uuid": "^14"
-  },
   "peerDependencies": {
-    "express": "^5.0.0",
-    "react": "^19",
-    "react-dom": "^19"
+    "next": ">=15 <17",
+    "react": ">=18.2 <20"
   },
   "peerDependenciesMeta": {
-    "express": {
+    "next": {
+      "optional": true
+    },
+    "react": {
       "optional": true
     }
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "gw-result": "^0.3.0",
+    "jose": "^6.2.2"
   }
 }

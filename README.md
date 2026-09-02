@@ -1,525 +1,534 @@
 # gw-auth
 
-A small TypeScript authentication toolkit for apps that use the Web
-`Request`/`Response` API on the server and React on the client.
+`gw-auth/core` centralizes authentication and its security invariants without
+knowing which application framework consumes it. It supports password, social,
+guest, password-recovery, and rotating-session flows.
 
-`gw-auth` provides:
+`gw-auth/nextjs` converts those plain operations to App Router Route Handlers
+and Server Actions. `gw-auth/nextjs/client` provides the matching client-side
+request helpers without choosing application routes.
 
-- JWT signing and verification helpers
-- Cookie helpers for access and refresh tokens
-- A repository-driven auth service
-- Reusable HTTP handlers for login, logout, signup, refresh, password reset,
-  guest auth, and third-party auth
-- OAuth provider adapters for Google, Kakao, Naver, and Apple
-- A React auth context/provider for client-side auth actions
-
-## Install
+## Installation
 
 ```sh
 npm install gw-auth
 ```
 
-React is a peer dependency for the client package:
+Node.js 20 or newer is required.
 
-```sh
-npm install react react-dom
-```
-
-## Exports
-
-```ts
-import type { AccessTokenPayload, RefreshTokenPayload } from "gw-auth";
-
-import {
-  AuthService,
-  JWTManager,
-  CookieManager,
-  loginHandler,
-} from "gw-auth/server";
-
-import { AuthProvider, useAuth } from "gw-auth/client";
-```
-
-## Core Concepts
-
-`gw-auth` does not own your database. Instead, you provide an
-`AuthRepository` implementation that knows how to find and create users,
-credentials, and third-party auth records. Refresh sessions use a separate
-`SessionRepository`.
-
-The server service issues:
-
-- an access token for short-lived authentication
-- a rotating refresh token stored as a SHA-256 hash in its session row
-- optional `Set-Cookie` headers for browser-based sessions
-
-The exported handlers are framework-agnostic functions built around standard
-Web `Request` and `Response` objects, so they fit route handlers in frameworks
-such as Next.js, Remix, Hono, and similar runtimes.
-
-## Refresh Session Architecture (0.3+)
-
-Browser and native clients should use `SessionAuthService`. Browser clients
-transport tokens in `HttpOnly` cookies, while native clients return them as
-JSON and keep the refresh token in platform secure storage. Both can share the
-same session table and still use distinct JWT issuers.
+## Package exports
 
 ```ts
 import {
-  JWTManager,
-  SessionAuthService,
-  type SessionAccessPayload,
-  type SessionRefreshPayload,
-  type SessionRepository,
-} from "gw-auth/server";
+  createAuth,
+  type AuthState,
+  type PasswordRepository,
+  type SocialRepository,
+} from "gw-auth/core";
 
-const accessTokens = new JWTManager<SessionAccessPayload>({
-  secret: process.env.ACCESS_TOKEN_SECRET!,
-  expiresIn: "30m",
-  issuer: "my-app",
+import { getAuth, routeHandler, serverAction, withAuth } from "gw-auth/nextjs";
+import {
+  AuthProvider,
+  authRequest,
+  startOAuth,
+  useAuth,
+} from "gw-auth/nextjs/client";
+```
+
+- `gw-auth/core` contains the framework-neutral facade, operation types, and storage ports.
+- `gw-auth/nextjs` contains server-only App Router adapters.
+- `gw-auth/nextjs/client` is the explicit client-module boundary.
+
+## Common setup
+
+Only session infrastructure, token policy, and shared browser-cookie policy are
+configured initially.
+
+```ts
+import { createAuth } from "gw-auth/core";
+
+export const auth = createAuth({
+  serviceName: "my-service",
+  sessions: sessionRepository,
+
+  tokens: {
+    access: {
+      secret: process.env.ACCESS_TOKEN_SECRET!,
+      expiresIn: "15m",
+    },
+    refresh: {
+      secret: process.env.REFRESH_TOKEN_SECRET!,
+      expiresIn: "30d",
+    },
+  },
+});
+```
+
+`serviceName` is the stable identifier for this authentication boundary. The
+package uses it as both JWT issuer and audience and prefixes every default
+cookie name with it. It may contain letters, numbers, dots, underscores, and
+hyphens.
+
+Each token secret must contain at least 32 UTF-8 bytes. The package validates
+the issuer, audience, expiration, token purpose, user, session, and refresh
+rotation fields internally.
+
+Cookie configuration is optional. Defaults are `Secure`, `HttpOnly`,
+`SameSite=Lax`, and `Path=/`. OAuth state defaults to `SameSite=None` so Apple
+`form_post` callbacks remain bound to the initiating browser. `HttpOnly` cannot
+be disabled. For example, `serviceName: "my-service"` produces
+`my-service_access_token` and `my-service_refresh_token`.
+
+Existing services may override a cookie name during migration:
+
+```ts
+browser: {
+  cookies: {
+    accessToken: { name: "legacy_access_token" },
+  },
+}
+```
+
+## Composition order
+
+Authentication features are configured before selecting their delivery
+environment:
+
+```text
+auth.<feature>(feature dependencies).<browser|mobile>(environment options)
+```
+
+Examples:
+
+```ts
+auth.password({ repository }).browser();
+auth.password({ repository }).mobile();
+
+auth
+  .social({ repository })
+  .google({ clientId, clientSecret })
+  .browser({ redirectUri });
+```
+
+Feature repositories are required only when their feature is enabled.
+
+## Password authentication
+
+```ts
+const password = auth.password({
+  repository: passwordRepository,
 });
 
-const refreshTokens = new JWTManager<SessionRefreshPayload>({
-  secret: process.env.REFRESH_TOKEN_SECRET!,
-  expiresIn: "30d",
-  issuer: "my-app",
+const browserPassword = password.browser();
+const mobilePassword = password.mobile();
+```
+
+Both projections accept the same typed input:
+
+```ts
+await browserPassword.login({
+  id: "member@example.com",
+  password: "secret",
 });
 
-export const sessions = new SessionAuthService(
-  sessionRepository satisfies SessionRepository,
-  accessTokens,
-  refreshTokens,
-);
+await mobilePassword.signup({
+  id: "member@example.com",
+  password: "secret",
+  passwordConfirm: "secret",
+  registration: {
+    displayName: "Member",
+    gender: "other",
+  },
+});
 ```
 
-The repository stores one row per browser or device session. Its
-`rotateRefreshSession` implementation must update only when both the session
-id and `expectedTokenHash` match, and return `false` otherwise. This
-compare-and-swap rule makes concurrent replay of an already rotated token fail.
+Browser success returns only `AuthState` plus cookie mutations. Mobile success
+returns the access and refresh tokens explicitly. The application must validate
+its `registration` value before calling `signup`.
 
-The session service guarantees these invariants:
+`PasswordRepository.createPasswordAccount` must atomically create the random
+internal user and password credential, and must enforce uniqueness for the
+normalized credential identifier.
 
-- refresh tokens contain a new JWT `jti` on every issue and rotation
-- the complete refresh token is stored as a SHA-256 hash, never plaintext
-- a refresh operation rotates both tokens and invalidates the previous refresh token
-- logout can revoke one device session; account deletion can revoke every session
-- configured JWT issuers are checked during verification, not only written during signing
+## Social authentication
 
-Refresh tokens are high-entropy signed credentials, so SHA-256 is intentional.
-Password hashes should still use a slow password hashing function. bcrypt is
-not used for refresh tokens because it only considers the first 72 input bytes,
-which is unsafe for comparing long JWTs that share a prefix.
-
-### Native Social Credential Verification
-
-Use the mobile verifiers for a one-time provider exchange:
+Configure social persistence once and reuse it across providers:
 
 ```ts
-import {
-  AppleAuthorizationCodeVerifier,
-  GoogleIdTokenVerifier,
-  KakaoAccessTokenVerifier,
-  SocialIdentityVerifiers,
-} from "gw-auth/server";
-
-const social = new SocialIdentityVerifiers([
-  new GoogleIdTokenVerifier(googleClientIds),
-  new KakaoAccessTokenVerifier(),
-  new AppleAuthorizationCodeVerifier(appleOptions),
-]);
-
-const identity = await social.verify(provider, credential);
+const social = auth.social({
+  repository: socialRepository,
+});
 ```
 
-Google verifies the ID-token signature, issuer, and audience. Kakao resolves
-the access token through Kakao's user API. Apple exchanges the native
-authorization code server-side, verifies the returned identity-token signature,
-and returns the provider refresh token needed for account-deletion revocation.
-Store that Apple refresh token encrypted at rest in the consuming application.
-
-See [MIGRATION.md](./MIGRATION.md) for version migration boundaries.
-
-## Repository Interfaces
-
-Implement the account and session repositories against your database:
+For browser OAuth, the same object may implement both `SocialRepository` and
+`OAuthTransactionRepository`. When transaction storage is separate, pass it
+once:
 
 ```ts
-import type { AuthRepository, SessionRepository } from "gw-auth/server";
+const social = auth.social({
+  repository: socialRepository,
+  transactions: oauthTransactionRepository,
+});
+```
 
-export const authRepository: AuthRepository = {
-  async findCredentialById(id) {
-    // Return { id, password, userId } or undefined.
-  },
+Mobile-only social authentication does not require OAuth transaction storage.
 
-  async createCredential({ id, password, userId }) {
-    // Store a login credential. Password is already hashed by signupHandler.
-  },
+### Browser Google OAuth
 
-  async updatePassword(id, hashedPassword) {
-    // Replace the credential password hash.
-  },
+```ts
+const google = social.google({
+  clientId: process.env.GOOGLE_CLIENT_ID!,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+}).browser({
+  redirectUri: "https://app.example.com/auth/google/callback",
+});
+```
 
-  async findUserById(userId) {
-    // Return { id, role, name } or undefined.
-  },
+`start` and `complete` are framework-neutral operations:
 
-  async createUser(userData) {
-    // Create and return { id, role, name }.
-  },
+```ts
+const started = await google.start({
+  redirectPath: "/settings",
+});
 
-  async findThirdPartyAuth(provider, providerId) {
-    // Return { userId } or undefined.
-  },
+if (started.result.isErr) {
+  // Map started.result.error at the application boundary.
+  return;
+}
 
-  async createThirdPartyAuth({ id, provider, userId }) {
-    // Link a provider account to a local user.
-  },
+await applyCookieMutations(started.cookies);
+await redirect(started.result.value.authorizationUrl);
+```
+
+The callback adapter parses its request and cookies before calling the package:
+
+```ts
+const completed = await google.complete({
+  code,
+  state,
+  cookies: parsedCookies,
+});
+
+await applyCookieMutations(completed.cookies);
+```
+
+`completed.result.value` is one of:
+
+```ts
+type OAuthCompleteOutput =
+  | {
+      status: "authenticated";
+      auth: AuthState;
+      redirectPath: string;
+    }
+  | {
+      status: "signup_required";
+      profile: SocialSignupProfile;
+      redirectPath: string;
+    };
+```
+
+The package never chooses an application signup route or constructs a redirect
+from an incoming host. The adapter owns navigation and may use only the already
+validated relative `redirectPath` returned by the package.
+
+### Other browser providers
+
+```ts
+social.kakao({ clientId, clientSecret }).browser({ redirectUri });
+social.naver({ clientId, clientSecret }).browser({ redirectUri });
+social.apple({ authKey, clientId, teamId, keyId }).browser({ redirectUri });
+```
+
+### Mobile providers
+
+```ts
+const google = social.google({ clientId }).mobile({
+  clientIds: [iosClientId, androidClientId],
+});
+
+await google.login({ idToken });
+await social.kakao().mobile().login({ accessToken });
+await social.naver().mobile().login({ accessToken });
+
+const apple = social.apple({ authKey, clientId, teamId, keyId }).mobile();
+await apple.login({ authorizationCode });
+```
+
+Provider credentials are verified before any local account action. Google and
+Apple verify signed identity tokens. Kakao and Naver resolve access tokens
+through their official profile endpoints.
+
+## Staged social signup
+
+An unknown provider identity does not create a partial account. It creates a
+short-lived, hashed, single-use signup attempt so the application can collect
+fields such as gender, nickname, and terms acceptance.
+
+Browser adapters read the configured HttpOnly signup cookie and supply parsed
+cookie values:
+
+```ts
+const signup = social.signup.browser();
+
+const profile = await signup.profile({ cookies: parsedCookies });
+
+const completed = await signup.complete({
+  cookies: parsedCookies,
+  registration: validatedRegistration,
+});
+```
+
+Mobile clients receive and return an explicit `signupToken`:
+
+```ts
+await social.signup.mobile().complete({
+  signupToken,
+  registration: validatedRegistration,
+});
+```
+
+`SocialRepository.completeSocialSignup` must atomically consume the attempt,
+create the random internal user, and link the unique
+`(provider, providerUserId)` identity. Never link accounts based only on equal
+email addresses.
+
+## Sessions
+
+Session behavior is shared by every authentication feature.
+
+```ts
+const browserSession = auth.session.browser();
+
+await browserSession.verify({ cookies: parsedCookies });
+await browserSession.refresh({ cookies: parsedCookies });
+await browserSession.logout({ cookies: parsedCookies });
+```
+
+```ts
+const mobileSession = auth.session.mobile();
+
+await mobileSession.verify({ accessToken });
+await mobileSession.refresh({ refreshToken });
+await mobileSession.logout({ refreshToken });
+```
+
+Refresh tokens rotate using repository compare-and-swap. Reusing a rotated
+token revokes its session family. Browser logout returns matching cookie
+deletions even when no refresh cookie is present.
+
+## Guest authentication
+
+```ts
+const browserGuest = auth.guest({ repository: guestRepository }).browser();
+const operation = await browserGuest.authenticate({ cookies: parsedCookies });
+```
+
+```ts
+const mobileGuest = auth.guest({ repository: guestRepository }).mobile();
+const result = await mobileGuest.authenticate({ guestCredential });
+```
+
+Guest credentials are server-generated, stored only as hashes, and rotated on
+use. Never use a client device identifier as a guest credential.
+
+## Password recovery
+
+```ts
+const recovery = auth.passwordRecovery({
+  repository: passwordResetRepository,
+  mailer,
+  siteOrigin: "https://app.example.com",
+  resetPath: "/reset-password",
+});
+
+await recovery.request({ credentialId });
+await recovery.reset({ token, password, passwordConfirm });
+```
+
+Password-reset discovery returns the same public result for known and unknown
+accounts. Completion must atomically consume the attempt, update the password,
+and revoke all user sessions.
+
+## Browser operation contract
+
+Browser methods return data rather than framework responses:
+
+```ts
+type BrowserOperation<T> = {
+  result: Result<T, AuthError>;
+  cookies: readonly BrowserCookieMutation[];
 };
-
-export const sessionRepository: SessionRepository = {
-  // Store, find, rotate, and delete refresh-session rows.
-};
 ```
 
-## Server Setup
+Adapters must apply `cookies` on both success and failure. OAuth completion, for
+example, deletes its state cookie even when provider verification fails. An
+adapter then decides how to express the result as a route response, redirect,
+or server action. HTTP adapters must add `Cache-Control: no-store` to every
+authentication or credential-bearing response.
 
-Create token managers, cookie managers, and the auth service:
+## Next.js App Router
+
+The Next.js adapter owns only framework conversion. The application still owns
+route locations, request validation, redirects, and feature composition.
+
+### Route Handler
+
+`routeHandler` wraps a core browser operation, applies cookie mutations on both
+success and failure, sanitizes errors, and adds `Cache-Control: no-store`.
 
 ```ts
-import {
-  AuthService,
-  CookieManager,
-  JWTManager,
-  type SessionAccessPayload,
-  type SessionRefreshPayload,
-} from "gw-auth/server";
-import { authRepository } from "./auth-repository";
-import { sessionRepository } from "./session-repository";
+import { routeHandler } from "gw-auth/nextjs";
 
-const accessTokenManager = new JWTManager<SessionAccessPayload>({
-  secret: process.env.ACCESS_TOKEN_SECRET!,
-  expiresIn: "30m",
-  issuer: "my-app",
-});
+const password = auth.password({ repository: passwordRepository }).browser();
 
-const refreshTokenManager = new JWTManager<SessionRefreshPayload>({
-  secret: process.env.REFRESH_TOKEN_SECRET!,
-  expiresIn: "30d",
-  issuer: "my-app",
-});
+export const POST = routeHandler(async (request) => {
+  const input = await request.json();
 
-export const authService = new AuthService({
-  authRepository,
-  sessionRepository,
-  accessTokenManager,
-  accessTokenCookieStore: new CookieManager("access_token"),
-  refreshTokenManager,
-  refreshTokenCookieStore: new CookieManager("refresh_token"),
+  return password.login(validatedLoginInput(input));
 });
 ```
 
-### Verify a Request
+OAuth routes may replace the default JSON success response while keeping the
+adapter-managed cookies:
 
 ```ts
-const authResult = await authService.verify(request);
+import { routeHandler } from "gw-auth/nextjs";
+import { NextResponse } from "next/server";
 
-if (authResult.isErr) {
-  return new Response("Unauthorized", { status: 401 });
-}
-
-const auth = authResult.value;
-```
-
-`verify` checks the `Authorization: Bearer <token>` header first, then the
-configured access-token cookie.
-
-## Route Handlers
-
-The package exports handlers that accept a `Request` and the services they
-need:
-
-```ts
-import {
-  loginHandler,
-  logoutHandler,
-  refreshHandler,
-  signupHandler,
-} from "gw-auth/server";
-import { authService } from "./auth-service";
-import { fileRepository } from "./file-repository";
-
-export async function login(request: Request) {
-  return loginHandler(request, { authService });
-}
-
-export async function signup(request: Request) {
-  return signupHandler(request, { authService, fileRepository });
-}
-
-export async function refresh(request: Request) {
-  return refreshHandler(request, { authService });
-}
-
-export async function logout(request: Request) {
-  return logoutHandler(request, { authService });
-}
-```
-
-Common handlers:
-
-| Handler | Purpose |
-| --- | --- |
-| `loginHandler` | Email/id and password login |
-| `logoutHandler` | Clears refresh token and auth cookies |
-| `refreshHandler` | Issues a new access token from a refresh token |
-| `signupHandler` | Creates a user, credential, and token pair |
-| `findAuthHandler` | Returns the current access-token payload |
-| `guestAuthHandler` | Creates or finds a guest user from a device id |
-| `requestPasswordResetHandler` | Sends a password-reset email |
-| `resetPasswordHandler` | Verifies reset token and updates password |
-| `loginWithThirdPartyHandler` | Logs in with an OAuth provider result |
-| `signUpWithThirdpartyHandler` | Creates a user from a third-party signup token |
-| `thirdpartyAuthCallbackHandler` | Handles browser OAuth redirects |
-
-### Express
-
-Install Express in the consuming server, then adapt any Web handler without
-changing the handler itself:
-
-```ts
-import express from "express";
-import { loginHandler } from "gw-auth/server";
-import { expressHandler } from "gw-auth/server/express";
-import { authService } from "./auth-service";
-
-const app = express();
-
-app.use(express.json());
-app.post(
-  "/api/auth/login",
-  expressHandler((request) => loginHandler(request, { authService })),
-);
-```
-
-The adapter preserves the status, body, headers, and multiple `Set-Cookie`
-values returned by the Web handler. Thrown errors are forwarded to Express
-error middleware through `next(error)`.
-
-## React Client
-
-Wrap your app with `AuthProvider` and pass the current auth payload from your
-server-rendering layer, loader, or API response.
-
-```tsx
-import { AuthProvider } from "gw-auth/client";
-import type { AccessTokenPayload } from "gw-auth";
-
-export function App({
-  auth,
-  children,
-}: {
-  auth?: AccessTokenPayload;
-  children: React.ReactNode;
-}) {
-  return <AuthProvider auth={auth}>{children}</AuthProvider>;
-}
-```
-
-Use the auth hook inside client components:
-
-```tsx
-import { useAuth } from "gw-auth/client";
-
-export function AccountButton() {
-  const { auth, isLoggedIn, login, logout } = useAuth();
-
-  if (!isLoggedIn()) {
-    return (
-      <button onClick={() => login("user@example.com", "password")}>
-        Log in
-      </button>
-    );
-  }
-
-  return <button onClick={() => logout()}>Log out {auth?.name}</button>;
-}
-```
-
-The client provider calls these default endpoints:
-
-| Client method | Endpoint |
-| --- | --- |
-| `login` | `POST /api/auth/login` |
-| `logout` | `POST /api/auth/logout` |
-| `signup` | `POST /api/auth/signup` |
-| `requestResetPassword` | `POST /api/auth/request-password-reset` |
-| `resetPassword` | `POST /api/auth/reset-password` |
-
-## Google Login Redirects
-
-Configure Google auth in the client provider:
-
-```tsx
-<AuthProvider
-  auth={auth}
-  googleAuth={{
-    googleClientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
-    googleRedirectUrl: "https://example.com/api/auth/google/callback",
-  }}
->
-  {children}
-</AuthProvider>
-```
-
-Then call:
-
-```ts
-const { loginWithGoogle } = useAuth();
-
-await loginWithGoogle("/dashboard");
-```
-
-On the server, create a provider:
-
-```ts
-import {
-  BaseAuthProvider,
-  GoogleAuth,
-  JWTManager,
-} from "gw-auth/server";
-import type { ThirdpartyAuthPayload } from "gw-auth/server";
-
-const signupTokenManager = new JWTManager<ThirdpartyAuthPayload>({
-  secret: process.env.SIGNUP_TOKEN_SECRET!,
-  expiresIn: "1h",
-});
-
-const thirdpartyAuth = new BaseAuthProvider({
-  authService,
-  signupTokenManager,
-});
-
-export const googleAuth = new GoogleAuth({
-  thirdpartyAuth,
-  googleClientId: process.env.GOOGLE_CLIENT_ID!,
-  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-  googleRedirectUri: "https://example.com/api/auth/google/callback",
-});
-```
-
-Use it with the callback handler:
-
-```ts
-import { thirdpartyAuthCallbackHandler } from "gw-auth/server";
-import { authService } from "./auth-service";
-import { googleAuth } from "./google-auth";
-
-export async function googleCallback(request: Request) {
-  return thirdpartyAuthCallbackHandler(request, {
-    provider: "google",
-    authService,
-    authProviders: [googleAuth],
-  });
-}
-```
-
-## Password Recovery
-
-```ts
-import {
-  JWTManager,
-  PasswordRecoveryService,
-  requestPasswordResetHandler,
-  resetPasswordHandler,
-} from "gw-auth/server";
-
-const passwordRecoveryService = new PasswordRecoveryService({
-  siteOrigin: "https://example.com",
-  siteName: "Example",
-  authRepository,
-  emailCredentials: {
-    service: "gmail",
-    user: process.env.EMAIL_USER!,
-    pass: process.env.EMAIL_PASS!,
-  },
-  passwordRecoveryTokenManager: new JWTManager({
-    secret: process.env.PASSWORD_RECOVERY_TOKEN_SECRET!,
-    expiresIn: "1h",
+export const GET = routeHandler(
+  async (request) => google.start({
+    redirectPath: request.nextUrl.searchParams.get("redirectPath") ?? "/",
   }),
-});
+  {
+    success: ({ authorizationUrl }) => NextResponse.redirect(authorizationUrl),
+  },
+);
+```
 
-export async function requestPasswordReset(request: Request) {
-  return requestPasswordResetHandler(request, { passwordRecoveryService });
-}
+For callbacks and other cookie-consuming operations, convert the request once:
 
-export async function resetPassword(request: Request) {
-  return resetPasswordHandler(request, { passwordRecoveryService });
+```ts
+import { nextRequestCookies, routeHandler } from "gw-auth/nextjs";
+
+export const GET = routeHandler(async (request) => google.complete({
+  code: request.nextUrl.searchParams.get("code") ?? "",
+  state: request.nextUrl.searchParams.get("state") ?? "",
+  cookies: nextRequestCookies(request),
+}));
+```
+
+### Server Action
+
+Call `serverAction` from an application-owned Server Action. It awaits the core
+operation, writes its cookies through Next.js `cookies()`, and returns a
+serializable `{ ok, value | error }` result.
+
+```ts
+"use server";
+
+import { serverAction } from "gw-auth/nextjs";
+
+export async function loginAction(formData: FormData) {
+  return serverAction(() => password.login({
+    id: String(formData.get("id") ?? ""),
+    password: String(formData.get("password") ?? ""),
+  }));
 }
 ```
 
-## Cookie Defaults
-
-`CookieManager` defaults to:
+The callback receives current cookie values for session operations:
 
 ```ts
-{
-  path: "/",
-  httpOnly: process.env.NODE_ENV === "production",
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "strict"
+export async function logoutAction() {
+  return serverAction((cookies) => session.logout({ cookies }));
 }
 ```
 
-Pass cookie options to override them:
+### Server auth and Proxy
 
-```ts
-new CookieManager("access_token", {
-  path: "/",
-  httpOnly: true,
-  secure: true,
-  sameSite: "lax",
-  domain: ".example.com",
-});
+Use `getAuth` when a Server Component needs verified access-token state. This
+replaces decoding a cookie directly in application code.
+
+```tsx
+import { getAuth } from "gw-auth/nextjs";
+import { AuthProvider } from "gw-auth/nextjs/client";
+
+export default async function Layout({ children }: { children: React.ReactNode }) {
+  const current = await getAuth(auth.session.browser());
+
+  return (
+    <AuthProvider initialAuth={current.isOk ? current.value : undefined}>
+      {children}
+    </AuthProvider>
+  );
+}
 ```
 
-Use `SessionCookieManager` for session cookies without explicit `maxAge` or
-`expires` values.
-
-## Token Payloads
-
-Access and refresh tokens contain:
+`withAuth` gives an application-owned Proxy callback the verified access
+payload. It attempts refresh only for GET and HEAD requests, then redirects once
+to the same URL with rotated cookies. Server Actions and other mutations must
+authenticate and authorize again inside their own execution boundary.
 
 ```ts
-export type AccessTokenPayload = {
-  userId: string;
-  role: string;
-  name: string;
-  iat: number;
-  exp: number;
+import { NextResponse } from "next/server";
+import { withAuth } from "gw-auth/nextjs";
+
+export const proxy = withAuth(
+  auth.session.browser(),
+  async (request, _event, currentAuth) => {
+    if (request.nextUrl.pathname.startsWith("/admin") && !currentAuth) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+
+    return NextResponse.next();
+  },
+);
+
+export const config = {
+  matcher: ["/((?!api|_next/static|_next/image|.*\\..*).*)"],
 };
 ```
 
-Refresh tokens use the same payload shape.
+### Client
 
-## Development
+`AuthProvider` keeps server-resolved auth state synchronized and exposes
+`authenticate` and `logout` without owning endpoint paths. Both operations use
+`authRequest`, which sends cookies, disables caching, validates the adapter
+envelope, and returns the same `Result` style as core operations. It expects the
+default JSON response produced by `routeHandler`.
 
-```sh
-npm install
-npm run build
+```ts
+"use client";
+
+import type { AuthState } from "gw-auth/core";
+import { authRequest, startOAuth, useAuth } from "gw-auth/nextjs/client";
+
+const { auth, isAuthenticated, authenticate, logout } = useAuth();
+
+const loggedIn = await authenticate("/auth/login", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ id, password }),
+});
+
+const current = await authRequest<AuthState>("/auth/current");
+
+startOAuth("/auth/google?redirectPath=%2Fsettings");
 ```
 
-Watch mode:
+## Maintenance
 
-```sh
-npm run dev
+Schedule cleanup according to traffic and retention policy:
+
+```ts
+await auth.session.deleteExpired();
+await social.deleteExpiredSignupAttempts();
+await oauthTransactionRepository.deleteExpiredOAuthTransactions(new Date());
+await auth.guest({ repository: guestRepository }).deleteExpiredCredentials();
+await recovery.deleteExpired();
 ```
 
-## Notes
-
-- Store token secrets in environment variables.
-- Use different secrets for access, refresh, signup, and password-recovery
-  tokens.
-- Implement rate limiting on public auth routes.
-- Validate request bodies at your application boundary.
-- The package is intentionally repository-driven so it can work with any
-  database or ORM.
+See [MIGRATION.md](./MIGRATION.md) before upgrading. Release changes are listed
+in [CHANGELOG.md](./CHANGELOG.md). The package is licensed under the
+[MIT License](./LICENSE).
