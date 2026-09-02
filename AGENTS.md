@@ -36,7 +36,8 @@
   ```ts
   const apple = auth.social({ repository, transactions }).apple(signing);
   apple.browser({ serviceId: webServiceId, redirectUri: webRedirectUri }).web();
-  apple.browser({ serviceId: androidServiceId, redirectUri: androidRedirectUri }).android();
+  apple.browser({ serviceId: androidServiceId, redirectUri: androidRedirectUri })
+    .android({ packageId });
   apple.native({ appId }).ios();
   ```
   Do not expose a caller-selected `clientType`; each operation must request the
@@ -46,6 +47,8 @@
   fixed catch-all paths and bodies; customization uses direct Route Handlers.
 - Keep the Next.js Proxy adapter route-agnostic. It may refresh GET and HEAD
   requests, but mutation boundaries must authenticate and authorize themselves.
+  Core browser refresh operations decide whether failed sessions require cookie
+  deletion; adapters apply returned effects and never classify refresh codes.
 - Expose feature-first composition such as
   `auth.social({ repository }).google(credentials).browser(options)`.
 - Configure only shared session, token, and browser-cookie policy in
@@ -63,7 +66,10 @@
 - Normalize the fixed browser session route to `AuthState`. JWT metadata is an
   internal transport detail and must not enter its client response contract.
   Apply the same normalization to Next.js `getAuth`; direct session verification
-  remains the server-only API for full access-token payloads.
+  remains the server-only API for full access-token payloads. Keep the managed
+  claim list and payload-to-state conversion in core.
+- Keep error semantics framework-neutral in core. HTTP adapters map the core
+  category to a status and may offer application overrides.
 - Keep repositories as explicit ports. Operations that create an account and attach credentials or social identities must be atomic repository operations.
 - Keep provider credential verification separate from local account creation and session issuance.
 - Use server-side, hashed, single-use attempts for OAuth transactions, social signup, and password reset.
@@ -83,7 +89,9 @@
 - Start Android Apple Browser API requests with server-generated state and
   nonce stored as a hashed, single-use transaction. Relay Apple's callback
   fields to Flutter's exact `signinwithapple` Intent, then consume state and
-  validate nonce when the app submits the authorization code.
+  validate nonce when the app submits the authorization code. Core owns the
+  package validation, callback allowlist and bounds, and Intent construction;
+  framework adapters only parse form fields and issue the redirect.
 - Build browser callback redirects from a configured trusted origin, never an unvalidated request `Host` header.
 - Reject relative redirects containing backslashes as well as protocol-relative
   or absolute values.

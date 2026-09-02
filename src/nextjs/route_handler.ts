@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server.js";
 
-import type {
-  AuthError,
-  AuthResult,
-  BrowserCookieValues,
-  BrowserOperation,
+import {
+  authErrorCategory,
+  type AuthError,
+  type AuthResult,
+  type BrowserCookieValues,
+  type BrowserOperation,
 } from "gw-auth/core";
 import { applyResponseCookies } from "./cookie";
 import { normalizeAuthOperation } from "./operation";
@@ -13,31 +14,6 @@ import {
   publicAuthError,
   type NextAuthError,
 } from "./result";
-
-const unauthorizedCodes = new Set([
-  "ACCESS_TOKEN_REQUIRED",
-  "INVALID_CREDENTIAL",
-  "INVALID_ACCESS_TOKEN",
-  "INVALID_GUEST_CREDENTIAL",
-  "INVALID_OAUTH_STATE",
-  "INVALID_PROVIDER_CREDENTIAL",
-  "INVALID_REFRESH_TOKEN",
-  "INVALID_SOCIAL_SIGNUP_TOKEN",
-  "INVALID_TOKEN",
-  "REFRESH_TOKEN_REQUIRED",
-  "REFRESH_TOKEN_REUSED",
-  "SESSION_USER_MISMATCH",
-  "SESSION_USER_NOT_FOUND",
-  "APPLE_AUTH_FAILED",
-  "GOOGLE_AUTH_FAILED",
-  "KAKAO_AUTH_FAILED",
-  "NAVER_AUTH_FAILED",
-]);
-
-const badGatewayCodes = new Set([
-  "INVALID_PROVIDER_RESPONSE",
-  "PROVIDER_UNAVAILABLE",
-]);
 
 /** Maps one core operation to a Next.js App Router handler invocation. */
 export type NextAuthRouteOperation<TContext, TValue> = (
@@ -128,17 +104,13 @@ function preventCaching(response: NextResponse) {
 
 /** Provides conservative defaults while allowing applications to override statuses. */
 function defaultErrorStatus(error: NextAuthError) {
-  if (error.code === "AUTH_SYSTEM_FAILURE") {
-    return 500;
-  }
+  const statuses = {
+    authentication: 401,
+    conflict: 409,
+    request: 400,
+    system: 500,
+    upstream: 502,
+  } as const;
 
-  if (badGatewayCodes.has(error.code)) {
-    return 502;
-  }
-
-  if (error.code.endsWith("ALREADY_EXISTS")) {
-    return 409;
-  }
-
-  return unauthorizedCodes.has(error.code) ? 401 : 400;
+  return statuses[authErrorCategory(error)];
 }

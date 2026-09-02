@@ -67,6 +67,19 @@ test("revokes a browser session and always returns matching deletion effects", a
   })).isErr, true);
 });
 
+test("clears browser cookies after a terminal refresh failure", async () => {
+  const { auth } = await testAuth();
+  const refreshed = await auth.session.browser().refresh({
+    cookies: { auth_refresh: "invalid-refresh-token" },
+  });
+
+  assert.equal(refreshed.result.error.code, "INVALID_REFRESH_TOKEN");
+  assert.deepEqual(refreshed.cookies.map(({ name, operation }) => ({ name, operation })), [
+    { name: "auth_access", operation: "delete" },
+    { name: "auth_refresh", operation: "delete" },
+  ]);
+});
+
 test("uses one atomic repository operation for password signup", async () => {
   const { auth, password } = await testAuth();
   const result = await auth.password({ repository: password }).mobile().signup({

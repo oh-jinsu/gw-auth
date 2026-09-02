@@ -8,7 +8,7 @@ import {
   mapAuthResult,
 } from "./response";
 import {
-  readAppleCallbackParameters,
+  readFormStrings,
   readJsonObject,
   requiredString,
 } from "./request";
@@ -24,12 +24,12 @@ export function appleAndroidRoutes<TClaims extends Record<string, unknown>>(
   const auth = apple.feature.browser({
     serviceId: android.serviceId,
     redirectUri: androidCallbackUrl(siteOrigin),
-  }).android();
+  }).android({ packageId: android.packageId });
 
   return [
     startRoute(auth),
     completeRoute(auth),
-    callbackRoute(android.packageId),
+    callbackRoute(auth),
   ];
 }
 
@@ -52,13 +52,21 @@ function completeRoute<TClaims extends Record<string, unknown>>(
 }
 
 /** Relays Apple's form-post values into the Flutter plugin callback Activity. */
-function callbackRoute(packageId: string): AuthRouteDefinition {
+function callbackRoute<TClaims extends Record<string, unknown>>(
+  auth: AppleAndroidAuth<TClaims>,
+): AuthRouteDefinition {
   return route("POST", "mobile/apple/callback", async (request) => {
-    const parameters = await readAppleCallbackParameters(request);
+    const values = await readFormStrings(request);
 
-    return parameters
-      ? externalRedirect(androidIntent(packageId, parameters), 302)
-      : invalidAuthRequest("Apple callback 형식이 유효하지 않습니다.");
+    if (!values) {
+      return invalidAuthRequest("Apple callback 형식이 유효하지 않습니다.");
+    }
+
+    const handoff = auth.handoff(values);
+
+    return handoff.isOk
+      ? externalRedirect(handoff.value.redirectUrl, 302)
+      : authResultResponse(request, async () => handoff);
   }, true);
 }
 
@@ -84,12 +92,6 @@ async function completeAndroidApple<TClaims extends Record<string, unknown>>(
 /** Derives the exact Apple HTTPS callback registered for the Android flow. */
 function androidCallbackUrl(siteOrigin: string) {
   return new URL("/api/auth/mobile/apple/callback", siteOrigin).toString();
-}
-
-/** Builds the exact Intent URI consumed by Flutter's sign_in_with_apple plugin. */
-function androidIntent(packageId: string, parameters: URLSearchParams) {
-  return `intent://callback?${parameters.toString()}`
-    + `#Intent;package=${packageId};scheme=signinwithapple;end`;
 }
 
 /** Creates one internal Android Apple route definition. */

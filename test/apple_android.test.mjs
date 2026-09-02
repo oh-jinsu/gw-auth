@@ -21,6 +21,20 @@ test("binds Flutter Android Apple credentials to server-owned state and nonce", 
   assert.equal(started.value.redirectUri, "https://example.test/api/auth/mobile/apple/callback");
   assert.notEqual(repository.transaction.stateHash, started.value.state);
 
+  const handoff = android.handoff({
+    code: "apple-code",
+    id_token: "apple-id-token",
+    state: started.value.state,
+    ignored: "secret",
+  });
+
+  assert.equal(handoff.isOk, true);
+  assert.match(handoff.value.redirectUrl, /^intent:\/\/callback\?code=apple-code/);
+  assert.match(handoff.value.redirectUrl, /id_token=apple-id-token/);
+  assert.match(handoff.value.redirectUrl, /state=/);
+  assert.doesNotMatch(handoff.value.redirectUrl, /ignored/);
+  assert.match(handoff.value.redirectUrl, /package=com\.example\.app/);
+
   let idToken = await appleIdToken(
     providerKeys.privateKey,
     started.value.nonce,
@@ -89,7 +103,39 @@ test("requires transaction storage before creating Android Apple operations", as
     redirectUri: "https://example.test/api/auth/mobile/apple/callback",
   });
 
-  assert.throws(() => feature.android(), /requires OAuth transaction storage/);
+  assert.throws(
+    () => feature.android({ packageId: "com.example.app" }),
+    /requires OAuth transaction storage/,
+  );
+});
+
+test("rejects unsafe packages and malformed callback handoffs in core", async () => {
+  const clientKeys = await generateKeyPair("ES256", { extractable: true });
+  const authKey = await exportPKCS8(clientKeys.privateKey);
+  const repository = new AppleAndroidRepository();
+  const browser = auth(repository).social({ repository, transactions: repository }).apple({
+    authKey,
+    teamId: "TEAM_ID",
+    keyId: "KEY_ID",
+  }).browser({
+    serviceId: "com.example.service",
+    redirectUri: "https://example.test/api/auth/mobile/apple/callback",
+  });
+
+  assert.throws(
+    () => browser.android({ packageId: "com.example;scheme=bad" }),
+    /packageId is invalid/,
+  );
+
+  const android = browser.android({ packageId: "com.example.app" });
+  const malformed = android.handoff({ state: "state-without-outcome" });
+  const oversized = android.handoff({
+    code: "x".repeat(8193),
+    state: "state-with-oversized-code",
+  });
+
+  assert.equal(malformed.error.code, "INVALID_OAUTH_RESPONSE");
+  assert.equal(oversized.error.code, "INVALID_OAUTH_RESPONSE");
 });
 
 /** Creates one configured Android Browser API projection. */
@@ -101,7 +147,7 @@ function apple(repository, authKey) {
   }).browser({
     serviceId: "com.example.service",
     redirectUri: "https://example.test/api/auth/mobile/apple/callback",
-  }).android();
+  }).android({ packageId: "com.example.app" });
 }
 
 /** Creates an authentication facade with one optional combined test repository. */

@@ -1,4 +1,6 @@
 import {
+  authErrorCategory,
+  authStateFromAccessPayload,
   createAuth,
   type AuthState,
   type AuthSessionRepository,
@@ -94,7 +96,14 @@ const browserApple = apple.browser({
 const androidApple = apple.browser({
   serviceId: "apple-service",
   redirectUri: "https://example.test/api/auth/mobile/apple/callback",
-}).android();
+}).android({ packageId: "com.example.app" });
+const unprojectedAndroidApple = apple.browser({
+  serviceId: "apple-service",
+  redirectUri: "https://example.test/api/auth/mobile/apple/callback",
+});
+
+// @ts-expect-error Flutter Android requires its callback Activity package identifier.
+unprojectedAndroidApple.android();
 const iosApple = apple.native({ appId: "com.example.app" }).ios();
 // @ts-expect-error Apple signing configuration no longer accepts a client selector.
 social.apple({ ...appleOptions, clientId: "apple-client" });
@@ -144,6 +153,7 @@ void mobileGoogle.login({ idToken: "google-id-token" });
 void browserApple.start();
 void androidApple.start();
 void androidApple.complete({ authorizationCode: "apple-code", state: "apple-state" });
+void androidApple.handoff({ code: "apple-code", state: "apple-state" });
 void iosApple.login({ authorizationCode: "apple-code" });
 void apple.revoke({
   providerClientId: "com.example.app",
@@ -164,6 +174,8 @@ const authState: AuthState<ApplicationClaims> = {
 };
 
 void authState;
+void authStateFromAccessPayload;
+void authErrorCategory;
 // @ts-expect-error JWT-managed claims are never part of public authentication state.
 authState.nbf;
 void authRoute.GET;

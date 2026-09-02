@@ -20,6 +20,8 @@ Node.js 20 or newer is required.
 
 ```ts
 import {
+  authErrorCategory,
+  authStateFromAccessPayload,
   createAuth,
   type AuthState,
   type PasswordRepository,
@@ -151,7 +153,7 @@ const webApple = apple.browser({
 const androidApple = apple.browser({
   serviceId: androidServiceId,
   redirectUri: androidRedirectUri,
-}).android();
+}).android({ packageId: "com.example.app" });
 
 const iosApple = apple.native({ appId }).ios();
 ```
@@ -347,7 +349,7 @@ await apple.revoke({
 
 Revocation belongs to the base `apple` feature because the stored client ID
 selects the correct Services ID or App ID; it is not available on `.web()`,
-`.android()`, or `.ios()` projections.
+`.android({ packageId })`, or `.ios()` projections.
 
 - Website login uses Apple's Browser API, a Services ID, and an exact HTTPS
   return URI.
@@ -366,7 +368,7 @@ single-use transaction:
 const android = apple.browser({
   serviceId: process.env.APPLE_SERVICE_ID!,
   redirectUri: "https://app.example.com/api/auth/mobile/apple/callback",
-}).android();
+}).android({ packageId: "com.example.app" });
 
 const attempt = await android.start();
 
@@ -376,9 +378,22 @@ if (attempt.isOk) {
 ```
 
 For Flutter Android, the HTTPS callback must relay Apple's original callback
-fields to the plugin's exact Intent URI. The prebuilt Next.js AuthRoute below
-does that automatically. A custom adapter must return an external redirect of
-this form without consuming or replacing `code`, `state`, or `id_token`:
+fields to the plugin's exact Intent URI. Core validates the package identifier,
+allowed fields, required outcome, and field lengths before building that URI.
+The prebuilt Next.js AuthRoute below parses the form and redirects automatically.
+A custom HTTP adapter parses text form fields, calls `handoff`, and uses its
+validated destination:
+
+```ts
+const handoff = android.handoff(parsedTextFormFields);
+
+if (handoff.isOk) {
+  return Response.redirect(handoff.value.redirectUrl, 302);
+}
+```
+
+The resulting redirect has this fixed form without consuming or replacing
+`code`, `state`, or `id_token`:
 
 ```text
 intent://callback?<apple-callback-fields>#Intent;package=<android-package-id>;scheme=signinwithapple;end
@@ -482,7 +497,21 @@ await mobileSession.logout({ refreshToken });
 
 Refresh tokens rotate using repository compare-and-swap. Reusing a rotated
 token revokes its session family. Browser logout returns matching cookie
-deletions even when no refresh cookie is present.
+deletions even when no refresh cookie is present. A terminal browser refresh
+failure also returns access and refresh cookie deletions; adapters must apply
+those effects on the error branch instead of interpreting error codes.
+
+Direct session verification intentionally returns the full access-token
+payload for server authorization. Use the core-owned conversion when exposing
+browser-safe state through another adapter:
+
+```ts
+const verified = await browserSession.verify({ cookies: parsedCookies });
+
+if (verified.isOk) {
+  const authState = authStateFromAccessPayload(verified.value);
+}
+```
 
 ## Guest authentication
 
@@ -676,7 +705,9 @@ the standard JSON envelope, and adds `Cache-Control: no-store`.
 The default status policy uses 400 for malformed inputs and password-policy
 failures, 401 for rejected local or provider credentials, 409 for existing
 identities, 502 for unavailable or malformed provider responses, and 500 for
-internal system failures. Applications can override this with `errorStatus`.
+internal system failures. Core owns this framework-neutral semantic
+classification through `authErrorCategory`; the adapter maps it to HTTP.
+Applications can override the result with `errorStatus`.
 
 ```ts
 import { routeHandler } from "gw-auth/nextjs";

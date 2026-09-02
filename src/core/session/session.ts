@@ -9,6 +9,13 @@ import { readBrowserCookie, type BrowserCookieValues } from "../api/browser_cook
 import type { BrowserOperation } from "../api/browser_operation";
 import { browserSessionResult, sessionCookieDeletions } from "./session_result";
 
+const invalidBrowserRefreshCodes = new Set([
+  "INVALID_REFRESH_TOKEN",
+  "REFRESH_TOKEN_REUSED",
+  "SESSION_USER_MISMATCH",
+  "SESSION_USER_NOT_FOUND",
+]);
+
 /** Parsed cookies supplied to browser session operations by an external adapter. */
 export type BrowserSessionInput = {
   cookies: BrowserCookieValues;
@@ -108,9 +115,15 @@ async function refreshBrowserSession<TClaims extends Record<string, unknown>>(
 
   const refreshed = await context.sessions.refreshTokenPair(token);
 
-  return refreshed.isErr
-    ? { result: refreshed, cookies: [] }
-    : browserSessionResult(refreshed.value, context.cookies);
+  if (refreshed.isOk) {
+    return browserSessionResult(refreshed.value, context.cookies);
+  }
+
+  const cookies = invalidBrowserRefreshCodes.has(refreshed.error.code)
+    ? sessionCookieDeletions(context.cookies)
+    : [];
+
+  return { result: refreshed, cookies };
 }
 
 /** Revokes the current session and clears browser cookies on every outcome. */

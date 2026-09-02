@@ -56,6 +56,7 @@ test("serves distinct Apple website, Android Browser API, and iOS Native API rou
       redirectUri: "https://example.test/api/auth/apple/callback",
     },
   ]);
+  assert.equal(captured.androidPackageId, "com.example.app");
   assert.equal((await started.json()).value.nonce, "server-nonce");
   assert.equal(captured.android.authorizationCode, "android-code");
   assert.equal(captured.android.state, "android-state");
@@ -70,20 +71,12 @@ test("serves distinct Apple website, Android Browser API, and iOS Native API rou
   assert.match(callback.headers.get("location"), /state=apple-state/);
   assert.match(callback.headers.get("location"), /user=%7B%22name%22/);
   assert.match(callback.headers.get("location"), /package=com\.example\.app/);
-});
-
-test("rejects an unsafe Android package identifier at composition time", () => {
-  assert.throws(() => createAuthRoute({
-    siteOrigin: "https://example.test",
-    session: sessionFeature(),
-    social: {
-      signup: signupFeature(),
-      apple: {
-        feature: appleFeature({ browser: [] }),
-        android: { serviceId: "service", packageId: "com.example;scheme=bad" },
-      },
-    },
-  }), /packageId is invalid/);
+  assert.deepEqual(captured.handoff, {
+    code: "apple-code",
+    id_token: "apple-id-token",
+    state: "apple-state",
+    user: JSON.stringify({ name: { firstName: "Member" } }),
+  });
 });
 
 /** Creates one Apple feature fake covering all three public projections. */
@@ -104,7 +97,7 @@ function appleFeature(captured) {
             redirectPath: "/",
           }),
         }),
-        android: () => ({
+        android: ({ packageId }) => ({
           start: async () => ok({
             serviceId: options.serviceId,
             redirectUri: options.redirectUri,
@@ -115,6 +108,17 @@ function appleFeature(captured) {
             captured.android = input;
 
             return ok(signupRequired());
+          },
+          handoff: (values) => {
+            captured.androidPackageId = packageId;
+            captured.handoff = values;
+
+            const parameters = new URLSearchParams(values);
+
+            return ok({
+              redirectUrl: `intent://callback?${parameters.toString()}`
+                + `#Intent;package=${packageId};scheme=signinwithapple;end`,
+            });
           },
         }),
       };

@@ -14,6 +14,11 @@ export type {
   AppleAndroidCompleteInput,
   AppleAndroidStartOutput,
 } from "../social/apple/apple_android";
+export type {
+  AppleAndroidHandoffInput,
+  AppleAndroidHandoffOutput,
+  AppleAndroidOptions,
+} from "../social/apple/apple_android_handoff";
 export type { AuthResult, MobileSession } from "./auth_result";
 export type {
   BrowserCookieMutation,

@@ -1,11 +1,11 @@
-import type {
-  AuthResult,
-  AuthState,
-  BrowserSessionAuth,
+import {
+  authStateFromAccessPayload,
+  type AuthResult,
+  type AuthState,
+  type BrowserSessionAuth,
 } from "gw-auth/core";
 import { ok } from "gw-result";
 
-import { publicAuthState } from "./auth_state";
 import { nextServerCookieStore, serverCookieValues } from "./server_cookie";
 
 /** Verifies the access cookie and returns browser-safe state without JWT metadata. */
@@ -15,5 +15,5 @@ export async function getAuth<TClaims extends Record<string, unknown>>(
   const store = await nextServerCookieStore();
   const verified = await session.verify({ cookies: serverCookieValues(store) });
 
-  return verified.isErr ? verified : ok(publicAuthState(verified.value));
+  return verified.isErr ? verified : ok(authStateFromAccessPayload(verified.value));
 }

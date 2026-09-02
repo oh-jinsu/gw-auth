@@ -79,6 +79,16 @@ test("maps provider outages and malformed upstream responses to 502", async () =
   }
 });
 
+test("maps core token-processing failures to 500", async () => {
+  for (const code of ["TOKEN_SIGNING_FAILED", "INVALID_TOKEN_EXPIRATION"]) {
+    const handler = routeHandler(async () => err(new AuthError(code, "internal token failure")));
+    const request = new NextRequest("https://example.test/auth/session");
+    const response = await handler(request);
+
+    assert.equal(response.status, 500);
+  }
+});
+
 test("serializes successful AuthResult values without browser cookie effects", async () => {
   const handler = routeHandler(async () => ok({
     expiresAt: new Date("2030-01-01T00:00:00.000Z"),
@@ -201,19 +211,25 @@ test("proxy never refreshes a mutation request", async () => {
   assert.deepEqual(await response.json(), { authenticated: false });
 });
 
-test("proxy clears an invalid refresh credential before retrying", async () => {
+test("proxy applies core cleanup effects after invalid refresh", async () => {
+  let logoutCount = 0;
   const session = proxySession({
     verify: err(new AuthError("INVALID_ACCESS_TOKEN", "expired")),
     refresh: {
       result: err(new AuthError("INVALID_REFRESH_TOKEN", "invalid")),
-      cookies: [],
+      cookies: [
+        deleteCookie("service_access"),
+        deleteCookie("service_refresh"),
+      ],
     },
+    onLogout: () => { logoutCount += 1; },
   });
   const proxy = withAuth(session, async () => NextResponse.next());
   const response = await proxy(new NextRequest("https://example.test/admin"), {});
 
   assert.equal(response.status, 307);
   assert.match(response.headers.get("Set-Cookie"), /service_refresh=;/);
+  assert.equal(logoutCount, 0);
 });
 
 /** Creates one secure set-cookie mutation for adapter tests. */
@@ -253,6 +269,10 @@ function proxySession(overrides = {}) {
         cookies: [],
       };
     },
-    logout: async () => ({ result: ok(), cookies: [deleteCookie("service_refresh")] }),
+    logout: async () => {
+      overrides.onLogout?.();
+
+      return { result: ok(), cookies: [deleteCookie("service_refresh")] };
+    },
   };
 }

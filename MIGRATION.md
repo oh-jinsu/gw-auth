@@ -1,5 +1,34 @@
 # Migrating gw-auth
 
+## Migrating from 0.5.0 to 0.6.0
+
+Direct Flutter Android Apple composition now supplies its package identifier
+when selecting the Android delivery:
+
+```ts
+const android = apple.browser({
+  serviceId: androidServiceId,
+  redirectUri: androidRedirectUri,
+}).android({ packageId: "com.example.app" });
+```
+
+Custom callback adapters must pass parsed text form fields to
+`android.handoff(values)` and redirect to the returned `redirectUrl`. Package
+validation, Apple callback filtering and bounds, and the exact
+`signinwithapple` Intent format are no longer adapter responsibilities. The
+fixed Next.js `createAuthRoute` configuration is unchanged.
+
+Failed browser refresh operations now include access and refresh cookie
+deletions for invalid, reused, mismatched, and missing-user sessions. Custom
+adapters must continue applying `BrowserOperation.cookies` on both success and
+failure; they should remove any error-code-specific logout logic.
+
+Core now exports `authStateFromAccessPayload` for client-safe projections and
+`authErrorCategory` for transport-neutral failure classification. Direct
+session verification still returns the full access-token payload. Precise JWT
+signing and expiration failures remain available as internal causes, while
+authentication workflows expose them as `AUTH_SYSTEM_FAILURE`.
+
 ## Migrating from 0.4.1 to 0.5.0
 
 The Next.js `routeHandler` and `serverAction` functions now accept
@@ -55,7 +84,7 @@ const web = apple.browser({
 const android = apple.browser({
   serviceId: androidServiceId,
   redirectUri: androidRedirectUri,
-}).android();
+}).android({ packageId: "com.example.app" });
 const ios = apple.native({ appId }).ios();
 ```
 

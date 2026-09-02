@@ -1,16 +1,6 @@
 import { resultFrom } from "gw-result";
 import type { NextRequest } from "next/server.js";
 
-const appleCallbackKeys = [
-  "code",
-  "id_token",
-  "state",
-  "user",
-  "error",
-  "error_description",
-] as const;
-const maximumCallbackValueLength = 8192;
-
 /** Reads a JSON object without allowing parser failures to escape the adapter. */
 export async function readJsonObject(request: NextRequest) {
   if (!hasJsonContentType(request)) {
@@ -56,38 +46,22 @@ export async function readOAuthCallback(request: NextRequest) {
   };
 }
 
-/** Reads the bounded Apple form-post fields accepted by Flutter's Android bridge. */
-export async function readAppleCallbackParameters(request: NextRequest) {
+/** Converts text form fields to framework-neutral values while omitting uploaded files. */
+export async function readFormStrings(request: NextRequest) {
   const values = await callbackForm(request);
 
   if (!values) {
     return undefined;
   }
 
-  const parameters = new URLSearchParams();
-
-  appleCallbackKeys.forEach((key) => appendCallbackValue(parameters, key, values.get(key)));
-
-  const validState = parameters.has("state");
-  const validOutcome = parameters.has("code") || parameters.has("error");
-
-  return validState && validOutcome ? parameters : undefined;
+  return Object.fromEntries(
+    [...values].filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
 }
 
 /** Accepts only text callback fields and rejects uploaded files. */
 function callbackString(value: FormDataEntryValue | string | null | undefined) {
   return typeof value === "string" ? value : "";
-}
-
-/** Appends one nonempty bounded text callback value while rejecting uploaded files. */
-function appendCallbackValue(
-  parameters: URLSearchParams,
-  key: string,
-  value: FormDataEntryValue | null,
-) {
-  if (typeof value === "string" && value.length > 0 && value.length <= maximumCallbackValueLength) {
-    parameters.set(key, value);
-  }
 }
 
 /** Parses an OAuth form-post callback without throwing on malformed data. */

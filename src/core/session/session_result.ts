@@ -1,5 +1,6 @@
 import { ok } from "gw-result";
 
+import { authSystemError } from "../auth_error";
 import type { AuthState } from "../jwt_payload";
 import { JWTManager } from "../jwt_manager";
 import type { SessionTokenPair } from "./session_auth_service";
@@ -18,13 +19,19 @@ export function browserSessionResult<TClaims extends Record<string, unknown>>(
   const accessExpiration = JWTManager.getExpirationTime(tokens.accessToken);
 
   if (accessExpiration.isErr) {
-    return { result: accessExpiration, cookies: [] };
+    return {
+      result: authSystemError("read_issued_access_token_expiration", accessExpiration.error),
+      cookies: [],
+    };
   }
 
   const refreshExpiration = JWTManager.getExpirationTime(tokens.refreshToken);
 
   if (refreshExpiration.isErr) {
-    return { result: refreshExpiration, cookies: [] };
+    return {
+      result: authSystemError("read_issued_refresh_token_expiration", refreshExpiration.error),
+      cookies: [],
+    };
   }
 
   return {

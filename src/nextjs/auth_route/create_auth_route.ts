@@ -28,7 +28,6 @@ export function createAuthRoute<
   options: AuthRouteOptions<TClaims, TPasswordRegistration, TSocialRegistration>,
 ): AuthRouteHandlers {
   assertSiteOrigin(options.siteOrigin);
-  assertAndroidPackageId(options.social?.apple?.android?.packageId);
 
   const routes = allRoutes(options);
 
@@ -36,17 +35,6 @@ export function createAuthRoute<
     GET: methodHandler("GET", routes, options.siteOrigin),
     POST: methodHandler("POST", routes, options.siteOrigin),
   };
-}
-
-/** Rejects Android package identifiers that could alter an Intent URI. */
-function assertAndroidPackageId(packageId?: string) {
-  const segment = "[A-Za-z][A-Za-z0-9_]*";
-  const packagePattern = new RegExp(`^${segment}(\\.${segment})+$`);
-  const valid = packageId === undefined || packagePattern.test(packageId);
-
-  if (!valid) {
-    throw new TypeError("AuthRoute Apple Android packageId is invalid.");
-  }
 }
 
 /** Collects browser, mobile, and optional social routes once at composition time. */

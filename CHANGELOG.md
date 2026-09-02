@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0 - 2026-09-03
+
+- Moved terminal browser-refresh cleanup into core cookie effects so every
+  adapter clears invalid sessions consistently without matching error codes.
+- Added core-owned access-payload normalization and semantic error
+  classification for reuse by framework adapters.
+- Moved Flutter Android Apple package validation, callback filtering, and
+  `signinwithapple` Intent construction from the Next.js adapter into the core
+  `.android({ packageId })` projection and its `handoff` operation.
+- Preserved precise JWT signing and expiration failures as internal causes
+  while exposing issued-token workflow failures as `AUTH_SYSTEM_FAILURE`.
+
 ## 0.5.0 - 2026-09-03
 
 - Rejected backslash-based external redirect bypasses, stripped all JWT-managed

@@ -7,6 +7,12 @@ import type { MobileSocialLoginResult } from "../mobile_social";
 import type { OAuthTransactionRepository } from "../oauth/oauth_transaction_repository";
 import type { SocialAuthService } from "../social_auth_service";
 import type { AppleAuthorizationCodeVerifier } from "./apple_authorization_code_verifier";
+import {
+  appleAndroidHandoff,
+  assertAppleAndroidPackageId,
+  type AppleAndroidHandoffInput,
+  type AppleAndroidHandoffOutput,
+} from "./apple_android_handoff";
 
 const androidStateDomain = "apple-android";
 const oauthTransactionLifetimeMs = 10 * 60 * 1000;
@@ -30,6 +36,9 @@ export type AppleAndroidAuth<TClaims extends Record<string, unknown>> = {
   /** Creates server-bound state and nonce for one Flutter Android authorization request. */
   start(): Promise<AuthResult<AppleAndroidStartOutput>>;
 
+  /** Validates Apple's callback and creates Flutter's exact callback Intent. */
+  handoff(input: AppleAndroidHandoffInput): AuthResult<AppleAndroidHandoffOutput>;
+
   /** Consumes one state and validates the matching Apple authorization code. */
   complete(
     input: AppleAndroidCompleteInput,
@@ -44,6 +53,7 @@ export type CreateAppleAndroidAuthOptions<
   transactions: OAuthTransactionRepository;
   social: SocialAuthService<TRegistrationInput, TClaims>;
   verifier: AppleAuthorizationCodeVerifier;
+  packageId: string;
   serviceId: string;
   redirectUri: string;
 };
@@ -55,8 +65,11 @@ export function createAppleAndroidAuth<
 >(
   options: CreateAppleAndroidAuthOptions<TRegistrationInput, TClaims>,
 ): AppleAndroidAuth<TClaims> {
+  assertAppleAndroidPackageId(options.packageId);
+
   return {
     start: () => startAndroidApple(options),
+    handoff: (input) => appleAndroidHandoff(options.packageId, input),
     complete: (input) => completeAndroidApple(options, input),
   };
 }

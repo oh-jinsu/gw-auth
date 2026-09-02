@@ -8,25 +8,13 @@ import type {
 import { authError, authSystemError } from "../auth_error";
 import { hashCredential } from "../credential";
 import { JWTManager, type JwtSignPayload } from "../jwt_manager";
+import { createAuthenticationState } from "./auth_state";
 import type {
   RefreshSession,
   SessionRepository,
   SessionUser,
   SessionUserRepository,
 } from "./session_repository";
-
-const managedAuthClaims = [
-  "aud",
-  "exp",
-  "iat",
-  "iss",
-  "jti",
-  "nbf",
-  "sessionId",
-  "sub",
-  "tokenUse",
-  "userId",
-] as const;
 
 /** Access and refresh credentials plus browser-safe authentication state. */
 export type SessionTokenPair<
@@ -210,12 +198,12 @@ export class SessionAuthService<
 
   /** Signs access and refresh tokens from one immutable authentication state. */
   private async signTokenPair(user: SessionUser<TClaims>, sessionId: string) {
-    const auth = authenticationState(user, sessionId);
+    const auth = createAuthenticationState<TClaims>(user.claims, user.id, sessionId);
     const accessClaims = auth as unknown as JwtSignPayload<SessionAccessPayload<TClaims>>;
     const accessToken = await this.accessTokens.sign(accessClaims);
 
     if (accessToken.isErr) {
-      return accessToken;
+      return authSystemError("sign_access_token", accessToken.error);
     }
 
     const refreshClaims = {
@@ -225,7 +213,7 @@ export class SessionAuthService<
     const refreshToken = await this.refreshTokens.sign(refreshClaims);
 
     return refreshToken.isErr
-      ? refreshToken
+      ? authSystemError("sign_refresh_token", refreshToken.error)
       : ok({ accessToken: accessToken.value, refreshToken: refreshToken.value, auth });
   }
 
@@ -240,22 +228,9 @@ export class SessionAuthService<
     const expiration = JWTManager.getExpirationTime(refreshToken);
 
     return expiration.isErr
-      ? expiration
+      ? authSystemError("read_issued_refresh_token_expiration", expiration.error)
       : ok({ id, userId, tokenHash: hash.value, expiresAt: expiration.value });
   }
-}
-
-/** Builds browser-safe state while preventing custom claims from overriding identifiers. */
-function authenticationState<
-  TClaims extends Record<string, unknown>,
->(user: SessionUser<TClaims>, sessionId: string): AuthState<TClaims> {
-  const claims: Record<string, unknown> = { ...user.claims };
-
-  for (const claim of managedAuthClaims) {
-    delete claims[claim];
-  }
-
-  return { ...claims, userId: user.id, sessionId } as AuthState<TClaims>;
 }
 
 /** Creates the public refresh-token rejection while preserving a verification cause. */

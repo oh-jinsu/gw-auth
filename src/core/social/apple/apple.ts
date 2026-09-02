@@ -1,4 +1,8 @@
-import { createAppleAndroidAuth, type AppleAndroidAuth } from "./apple_android";
+import {
+  createAppleAndroidAuth,
+  type AppleAndroidAuth,
+} from "./apple_android";
+import type { AppleAndroidOptions } from "./apple_android_handoff";
 import { AppleAuth } from "./apple_auth";
 import { AppleAuthorizationCodeVerifier } from "./apple_authorization_code_verifier";
 import type { AuthResult } from "../../api/auth_result";
@@ -40,7 +44,7 @@ export type AppleBrowserApi<TClaims extends Record<string, unknown>> = {
   web(): BrowserOAuth<TClaims>;
 
   /** Creates the Flutter Android flow with server-bound state and nonce. */
-  android(): AppleAndroidAuth<TClaims>;
+  android(options: AppleAndroidOptions): AppleAndroidAuth<TClaims>;
 };
 
 /** Apple Native API projected into explicit iOS session-token delivery. */
@@ -104,7 +108,7 @@ function createAppleBrowserApi<
 
   return {
     web: () => browserSocialAuth(context, new AppleAuth(providerOptions)),
-    android: () => createAndroid(context, verifier, browser),
+    android: (android) => createAndroid(context, verifier, browser, android),
   };
 }
 
@@ -135,6 +139,7 @@ function createAndroid<
   context: SocialContext<TRegistrationInput, TClaims>,
   verifier: AppleAuthorizationCodeVerifier,
   browser: AppleBrowserOptions,
+  android: AppleAndroidOptions,
 ) {
   if (!context.transactions) {
     throw new TypeError("Apple Android authentication requires OAuth transaction storage.");
@@ -144,6 +149,7 @@ function createAndroid<
     transactions: context.transactions,
     social: createSocialService(context),
     verifier,
+    packageId: android.packageId,
     serviceId: browser.serviceId,
     redirectUri: browser.redirectUri,
   });

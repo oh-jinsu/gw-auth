@@ -1,6 +1,6 @@
 {
   "name": "gw-auth",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Framework-neutral TypeScript authentication core with explicit Next.js adapters.",
   "author": "Jinsu Oh",
   "sideEffects": false,

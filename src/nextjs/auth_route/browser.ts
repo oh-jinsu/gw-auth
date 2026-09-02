@@ -1,12 +1,12 @@
-import type {
-  BrowserPasswordAuth,
-  BrowserSessionAuth,
-  GuestAuth,
-  PasswordRecoveryAuth,
+import {
+  authStateFromAccessPayload,
+  type BrowserPasswordAuth,
+  type BrowserSessionAuth,
+  type GuestAuth,
+  type PasswordRecoveryAuth,
 } from "gw-auth/core";
 import type { NextRequest } from "next/server.js";
 
-import { publicAuthState } from "../auth_state";
 import { nextRequestCookies } from "../route_handler";
 import {
   authResultResponse,
@@ -49,7 +49,7 @@ function sessionRoutes<TClaims extends Record<string, unknown>>(
       request,
       async () => mapAuthResult(
         await session.verify({ cookies: nextRequestCookies(request) }),
-        publicAuthState,
+        authStateFromAccessPayload,
       ),
     )),
     route("POST", "refresh", (request) => browserOperationResponse(

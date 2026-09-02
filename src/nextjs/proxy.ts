@@ -12,13 +12,6 @@ import type {
 import { applyResponseCookies } from "./cookie";
 import { nextRequestCookies } from "./route_handler";
 
-const invalidRefreshCodes = new Set([
-  "INVALID_REFRESH_TOKEN",
-  "REFRESH_TOKEN_REUSED",
-  "SESSION_USER_MISMATCH",
-  "SESSION_USER_NOT_FOUND",
-]);
-
 /** Proxy callback receiving optimistic authentication resolved from the access token. */
 export type AuthenticatedNextProxy<
   TClaims extends Record<string, unknown>,
@@ -65,24 +58,11 @@ async function refreshProxySession<TClaims extends Record<string, unknown>>(
 ) {
   const refreshed = await session.refresh({ cookies: values });
 
-  if (refreshed.result.isOk) {
+  if (refreshed.result.isOk || refreshed.cookies.length > 0) {
     return redirectWithCookies(request, refreshed.cookies);
   }
 
-  return invalidRefreshCodes.has(refreshed.result.error.code)
-    ? clearInvalidSession(session, request, values)
-    : proxy(request, event, undefined);
-}
-
-/** Clears invalid session cookies and redirects once to stop refresh loops. */
-async function clearInvalidSession<TClaims extends Record<string, unknown>>(
-  session: BrowserSessionAuth<TClaims>,
-  request: NextRequest,
-  values: ReturnType<typeof nextRequestCookies>,
-) {
-  const loggedOut = await session.logout({ cookies: values });
-
-  return redirectWithCookies(request, loggedOut.cookies);
+  return proxy(request, event, undefined);
 }
 
 /** Creates a no-store same-URL redirect carrying core cookie mutations. */

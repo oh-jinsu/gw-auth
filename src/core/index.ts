@@ -1,5 +1,11 @@
 export * from "./api";
-export { AuthError, isAuthError } from "./auth_error";
+export {
+  AuthError,
+  authErrorCategory,
+  isAuthError,
+  type AuthErrorCategory,
+} from "./auth_error";
+export { authStateFromAccessPayload } from "./session/auth_state";
 export type {
   CreatePasswordAccountParams,
   CreatePasswordAccountResult,

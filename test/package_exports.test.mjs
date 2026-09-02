@@ -16,8 +16,16 @@ test("loads the documented ESM and CommonJS entry points", () => {
   const cjsClient = require("../dist/nextjs/client/index.js");
   const cjsTesting = require("../dist/testing/index.js");
 
-  assert.deepEqual(Object.keys(esmCore).sort(), ["AuthError", "createAuth", "isAuthError"]);
-  assert.deepEqual(Object.keys(cjsCore).sort(), ["AuthError", "createAuth", "isAuthError"]);
+  const coreExports = [
+    "AuthError",
+    "authErrorCategory",
+    "authStateFromAccessPayload",
+    "createAuth",
+    "isAuthError",
+  ];
+
+  assert.deepEqual(Object.keys(esmCore).sort(), coreExports);
+  assert.deepEqual(Object.keys(cjsCore).sort(), coreExports);
   assert.deepEqual(Object.keys(esmNext).sort(), [
     "createAuthRoute",
     "getAuth",
