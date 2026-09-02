@@ -1,9 +1,21 @@
 import type { JWTPayload } from "jose";
 
+type ManagedAuthClaim =
+  | "aud"
+  | "exp"
+  | "iat"
+  | "iss"
+  | "jti"
+  | "nbf"
+  | "sessionId"
+  | "sub"
+  | "tokenUse"
+  | "userId";
+
 /** Browser-safe authentication state returned without either bearer token. */
 export type AuthState<
   TClaims extends Record<string, unknown> = Record<string, unknown>,
-> = TClaims & { userId: string; sessionId: string };
+> = Omit<TClaims, ManagedAuthClaim> & { userId: string; sessionId: string };
 
 /** Verified short-lived access-token claims. */
 export type SessionAccessPayload<

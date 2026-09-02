@@ -6,6 +6,7 @@ import test from "node:test";
 import * as esmCore from "../dist/core/index.mjs";
 import * as esmNext from "../dist/nextjs/server/index.mjs";
 import * as esmClient from "../dist/nextjs/client/index.mjs";
+import * as esmTesting from "../dist/testing/index.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -13,6 +14,7 @@ test("loads the documented ESM and CommonJS entry points", () => {
   const cjsCore = require("../dist/core/index.js");
   const cjsNext = require("../dist/nextjs/server/index.js");
   const cjsClient = require("../dist/nextjs/client/index.js");
+  const cjsTesting = require("../dist/testing/index.js");
 
   assert.deepEqual(Object.keys(esmCore).sort(), ["AuthError", "createAuth", "isAuthError"]);
   assert.deepEqual(Object.keys(cjsCore).sort(), ["AuthError", "createAuth", "isAuthError"]);
@@ -44,9 +46,16 @@ test("loads the documented ESM and CommonJS entry points", () => {
     "startOAuth",
     "useAuth",
   ]);
+  assert.deepEqual(Object.keys(esmTesting).sort(), [
+    "assertOAuthTransactionRepositoryConformance",
+    "assertPasswordResetRepositoryConformance",
+    "assertSessionRepositoryConformance",
+    "assertSocialRepositoryConformance",
+  ]);
+  assert.deepEqual(Object.keys(cjsTesting).sort(), Object.keys(esmTesting).sort());
 });
 
-test("publishes only the core and explicit Next.js entry points", async () => {
+test("publishes only the documented package entry points", async () => {
   const files = await distributionFiles(new URL("../dist/", import.meta.url));
 
   assert.deepEqual(files, [
@@ -62,6 +71,10 @@ test("publishes only the core and explicit Next.js entry points", async () => {
     "nextjs/server/index.d.ts",
     "nextjs/server/index.js",
     "nextjs/server/index.mjs",
+    "testing/index.d.mts",
+    "testing/index.d.ts",
+    "testing/index.js",
+    "testing/index.mjs",
   ]);
 });
 

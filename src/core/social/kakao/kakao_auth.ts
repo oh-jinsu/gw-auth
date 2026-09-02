@@ -1,5 +1,3 @@
-import { fetchWithResult } from "gw-result";
-
 import { authError } from "../../auth_error";
 import { KakaoAccessTokenVerifier } from "./kakao_access_token_verifier";
 import type {
@@ -7,7 +5,13 @@ import type {
   OAuthCodeVerification,
   OAuthProvider,
 } from "../oauth/oauth_provider";
-import { providerJson, providerString } from "../provider_response";
+import { providerFetch } from "../provider_fetch";
+import {
+  invalidProviderResponse,
+  providerJson,
+  providerRequestError,
+  providerString,
+} from "../provider_response";
 
 /** Configuration for Kakao's server-side authorization-code flow. */
 export type KakaoAuthOptions = {
@@ -66,18 +70,24 @@ export class KakaoAuth implements OAuthProvider {
       values.client_secret = this.options.clientSecret;
     }
 
-    const fetched = await fetchWithResult("https://kauth.kakao.com/oauth/token", {
+    const fetched = await providerFetch("https://kauth.kakao.com/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams(values),
     });
 
     if (fetched.isErr) {
-      return authError("KAKAO_AUTH_FAILED", "Kakao 인증에 실패했습니다.", fetched.error);
+      return providerRequestError(
+        fetched.error,
+        "kakao",
+        "KAKAO_AUTH_FAILED",
+        "Kakao 인증에 실패했습니다.",
+      );
     }
 
     const json = await providerJson(
       fetched.value,
+      "kakao",
       "KAKAO_AUTH_FAILED",
       "Kakao 인증에 실패했습니다.",
     );
@@ -90,6 +100,6 @@ export class KakaoAuth implements OAuthProvider {
 
     return accessToken
       ? this.accessTokens.verify(accessToken)
-      : authError("KAKAO_AUTH_FAILED", "Kakao 액세스 토큰이 없습니다.");
+      : invalidProviderResponse("kakao", { missing: "access_token" });
   }
 }

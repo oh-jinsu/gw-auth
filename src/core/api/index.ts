@@ -1,10 +1,19 @@
 export { createAuth } from "./create_auth";
 
 export type {
+  AppleBrowserApi,
   AppleBrowserOptions,
+  AppleNativeApi,
+  AppleNativeOptions,
   AppleOptions,
   AppleSocialAuth,
+  AppleTokenRevocation,
 } from "../social/apple/apple";
+export type {
+  AppleAndroidAuth,
+  AppleAndroidCompleteInput,
+  AppleAndroidStartOutput,
+} from "../social/apple/apple_android";
 export type { AuthResult, MobileSession } from "./auth_result";
 export type {
   BrowserCookieMutation,

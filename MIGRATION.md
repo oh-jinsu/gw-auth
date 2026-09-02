@@ -1,5 +1,147 @@
 # Migrating gw-auth
 
+## Migrating from 0.4.1 to 0.5.0
+
+The Next.js `routeHandler` and `serverAction` functions now accept
+cookie-free `AuthResult<T>` operations directly. Existing browser-operation
+calls are unchanged:
+
+```ts
+export const POST = routeHandler(() => mobilePassword.login(input));
+
+export async function requestPasswordReset(credentialId: string) {
+  return serverAction(() => recovery.request({ credentialId }));
+}
+```
+
+The fixed `GET /api/auth/session` route and Next.js `getAuth` now return only
+normalized `AuthState`. Remove dependencies on JWT metadata such as `iat`,
+`exp`, `iss`, `aud`, and `tokenUse` from those client-facing paths. Direct
+server-side session verification still returns its typed access payload.
+
+Application claims named `aud`, `exp`, `iat`, `iss`, `jti`, `nbf`, `sub`,
+`tokenUse`, `userId`, or `sessionId` are now removed before issuance and omitted
+from `AuthState`. Rename any application data using those reserved names.
+`createAuth` also rejects equal access and refresh secrets; rotate one key if a
+service reused the same value.
+
+Password login, signup, and recovery now reject values that bcrypt would
+truncate after 72 UTF-8 bytes. Add an application-facing maximum rule if a
+consumer previously accepted longer passwords.
+
+Consumer repository implementations can import the new Node.js-only
+assertions from `gw-auth/testing` to verify CAS, single-consumption, replay,
+expiration, and password-reset/session-revocation behavior. Each assertion
+requires a fresh isolated fixture; no repository implementation moved into
+`gw-auth`.
+
+The password-reset conformance fixture now also requires
+`countOtherActiveRefreshSessions()`. Seed at least one unrelated user's session
+so the assertion can prove reset completion revokes only the target user's
+sessions. The social assertion now races two different attempts for the same
+provider identity as well as two consumers of one attempt.
+
+Apple configuration now follows Apple's actual Browser and Native API
+boundaries. Remove `clientId` from the shared Apple signing options and remove
+the old `.browser(...)` and `.mobile()` projections:
+
+```ts
+const apple = social.apple({ authKey, teamId, keyId });
+
+const web = apple.browser({
+  serviceId: webServiceId,
+  redirectUri: webRedirectUri,
+}).web();
+const android = apple.browser({
+  serviceId: androidServiceId,
+  redirectUri: androidRedirectUri,
+}).android();
+const ios = apple.native({ appId }).ios();
+```
+
+Website and Android flows require a Services ID and exact HTTPS return URI.
+Native iOS requires an App ID and omits `redirect_uri` during code exchange.
+No public `clientType` selector replaces the old API.
+
+Apple revocation moved from each delivery projection to the base feature. Add a
+`providerClientId` column beside the encrypted provider refresh token, populate
+both from the verified `SocialIdentity`, and revoke with the issuing identifier:
+
+```ts
+await apple.revoke({
+  providerRefreshToken: storedProviderRefreshToken,
+  providerClientId: storedProviderClientId,
+});
+```
+
+Backfill existing Apple identity rows with the App ID or Services ID used by
+their original flow before switching account deletion to the new revoker.
+
+The fixed Next.js AuthRoute now accepts Apple configuration by delivery:
+
+```ts
+social: {
+  signup: social.signup,
+  apple: {
+    feature: apple,
+    web: { serviceId: process.env.APPLE_WEB_SERVICE_ID! },
+    android: {
+      serviceId: process.env.APPLE_ANDROID_SERVICE_ID!,
+      packageId: "com.example.app",
+    },
+    ios: { appId: process.env.APPLE_APP_ID! },
+  },
+}
+```
+
+Replace the old Apple mobile endpoint with the appropriate fixed route:
+
+- Native iOS: `POST /api/auth/mobile/apple/native` with
+  `{ authorizationCode }`.
+- Flutter Android: call `POST /api/auth/mobile/apple/browser/start`, pass its
+  Services ID, return URI, state, and nonce to `getAppleIDCredential`, then call
+  `POST /api/auth/mobile/apple/browser` with `{ authorizationCode, state }`.
+- Register `POST /api/auth/mobile/apple/callback` as Apple's Android return URI;
+  it relays the form post to Flutter's `signinwithapple` callback Intent.
+
+Android Apple authentication now requires the social OAuth transaction
+repository so state and nonce can be consumed once on the server.
+
+Google, Kakao, and Naver entries in the fixed AuthRoute now wrap the feature and
+explicit delivery selection. This prevents a mobile-only configuration from
+constructing a browser projection:
+
+```ts
+social: {
+  signup: social.signup,
+  google: {
+    feature: social.google({ clientId, clientSecret }),
+    browser: true,
+    mobile: { clientIds: [iosClientId, androidClientId] },
+  },
+}
+```
+
+Omit `browser` and its secret for mobile-only use; omit `mobile` for
+browser-only use. The preset now rejects requests with a present foreign
+`Origin` header except provider form-post callbacks, and accepts JSON bodies
+only with a JSON Content-Type. Origin-less native and server clients remain
+supported.
+
+Password-recovery requests now conceal attempt-storage and notification errors
+for known accounts. Supply `onRequestError` if those failures must be reported
+to logging or monitoring. Provider transport/429/5xx failures now use
+`PROVIDER_UNAVAILABLE`, malformed successful responses use
+`INVALID_PROVIDER_RESPONSE`, and the Next.js adapter maps both to 502.
+The Next.js client now preserves structured auth errors from non-OK HTTP
+responses instead of reporting every 4xx/5xx as `AUTH_NETWORK_FAILURE`.
+Public `AUTH_SYSTEM_FAILURE` messages no longer include an internal operation
+name. Observability code can read `error.cause.operation` before the HTTP
+adapter removes causes.
+
+All consuming HTTP routes remain responsible for rate limiting authentication,
+recovery, OAuth, guest, refresh, and other credential-bearing endpoints.
+
 ## Migrating from 0.3 to 0.4
 
 Version 0.4 replaces constructor and HTTP-handler composition with one

@@ -125,6 +125,30 @@ test("rejects cross-origin OAuth redirects before storing a transaction", async 
   assert.equal(socialRepository.transaction, undefined);
 });
 
+test("rejects a backslash redirect that URL parsing would resolve externally", async () => {
+  const { auth, socialRepository } = fixture();
+  const google = auth.social({ repository: socialRepository }).google({
+    clientId: "google-client",
+    clientSecret: "google-secret",
+  }).browser({ redirectUri: "https://example.test/auth/google/callback" });
+  const result = await google.start({ redirectPath: "/\\attacker.example" });
+
+  assert.equal(result.result.error.code, "INVALID_REDIRECT_PATH");
+  assert.equal(socialRepository.transaction, undefined);
+});
+
+test("rejects an ASCII-whitespace redirect that URL parsing would resolve externally", async () => {
+  const { auth, socialRepository } = fixture();
+  const google = auth.social({ repository: socialRepository }).google({
+    clientId: "google-client",
+    clientSecret: "google-secret",
+  }).browser({ redirectUri: "https://example.test/auth/google/callback" });
+  const result = await google.start({ redirectPath: "/\n/attacker.example" });
+
+  assert.equal(result.result.error.code, "INVALID_REDIRECT_PATH");
+  assert.equal(socialRepository.transaction, undefined);
+});
+
 test("uses rotating server-issued credentials for browser guests", async () => {
   const { auth } = fixture();
   const repository = new MemoryGuestRepository();
@@ -177,6 +201,44 @@ test("keeps password-reset discovery uniform and consumes attempts once", async 
 
   assert.equal(completed.isOk, true);
   assert.equal(replayed.error.code, "INVALID_PASSWORD_RESET_TOKEN");
+
+  const truncated = await recovery.reset({
+    token: "A".repeat(43),
+    password: "가".repeat(25),
+    passwordConfirm: "가".repeat(25),
+  });
+
+  assert.equal(truncated.error.code, "INVALID_PASSWORD");
+});
+
+test("conceals known-account reset delivery failures and reports them internally", async () => {
+  const { auth } = fixture();
+  const repository = new MemoryPasswordResetRepository();
+  const reported = [];
+  const recovery = auth.passwordRecovery({
+    siteOrigin: "http://[::1]:3000",
+    repository,
+    mailer: { sendPasswordReset: async () => { throw new Error("mailer unavailable"); } },
+    onRequestError: (error) => reported.push(error),
+  });
+  const requested = await recovery.request({ credentialId: "member" });
+
+  assert.equal(requested.isOk, true);
+  assert.equal(repository.attempt, undefined);
+  assert.equal(reported.length, 1);
+  assert.equal(reported[0].code, "AUTH_SYSTEM_FAILURE");
+  assert.equal(reported[0].cause.operation, "send_password_reset");
+});
+
+test("rejects a backslash password reset path at composition time", () => {
+  const { auth } = fixture();
+
+  assert.throws(() => auth.passwordRecovery({
+    siteOrigin: "https://example.test",
+    resetPath: "/\\attacker.example",
+    repository: new MemoryPasswordResetRepository(),
+    mailer: new MemoryPasswordResetMailer(),
+  }), /same-origin relative path/);
 });
 
 /** Creates the common facade and combined in-memory social repository. */

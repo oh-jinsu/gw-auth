@@ -18,10 +18,7 @@ export function authResultResponse<TValue>(
   request: NextRequest,
   operation: () => Promise<AuthResult<TValue>>,
 ) {
-  return browserOperationResponse(request, async () => ({
-    result: await operation(),
-    cookies: [],
-  }));
+  return routeHandler(operation)(request, undefined);
 }
 
 /** Maps only the successful value of an authentication result. */
@@ -35,6 +32,11 @@ export function mapAuthResult<TValue, TNext>(
 /** Returns a stable no-store response for a malformed fixed-route request. */
 export function invalidAuthRequest(message = "인증 요청 형식이 유효하지 않습니다.") {
   return authRouteError("INVALID_AUTH_REQUEST", message, 400);
+}
+
+/** Rejects a browser request carrying an untrusted explicit Origin header. */
+export function authOriginForbidden() {
+  return authRouteError("AUTH_ORIGIN_FORBIDDEN", "허용되지 않은 요청 출처입니다.", 403);
 }
 
 /** Returns a no-store response when no fixed authentication path matches. */
@@ -54,6 +56,11 @@ export function authMethodNotAllowed(methods: string[]) {
 /** Creates a relative redirect without trusting the incoming request origin. */
 export function relativeRedirect(path: string, status = 303) {
   return noStore(new NextResponse(null, { status, headers: { Location: path } }));
+}
+
+/** Creates a no-store redirect to one adapter-validated external destination. */
+export function externalRedirect(url: string, status = 303) {
+  return noStore(new NextResponse(null, { status, headers: { Location: url } }));
 }
 
 /** Creates one sanitized fixed-route failure envelope. */

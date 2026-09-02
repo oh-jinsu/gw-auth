@@ -1,6 +1,5 @@
 import type {
   MobileSocialAuth,
-  MobileSocialLoginResult,
   SocialSignupAuth,
 } from "gw-auth/core";
 import type { NextRequest } from "next/server.js";
@@ -15,19 +14,46 @@ import type {
   AuthRouteDefinition,
   AuthRouteSocial,
 } from "./types";
+import { appleAndroidRoutes } from "./apple_android";
+import { serializeMobileSocialLogin } from "./mobile_social_result";
 
 /** Creates provider and staged-signup mobile routes. */
 export function mobileSocialRoutes<TRegistration, TClaims extends Record<string, unknown>>(
   social: AuthRouteSocial<TRegistration, TClaims>,
+  siteOrigin: string,
 ) {
   const routes = [mobileSocialSignupRoute(social.signup.mobile())];
 
-  addProvider(routes, "google", social.google?.mobile(), "idToken");
-  addProvider(routes, "kakao", social.kakao?.mobile(), "accessToken");
-  addProvider(routes, "naver", social.naver?.mobile(), "accessToken");
-  addProvider(routes, "apple", social.apple?.mobile(), "authorizationCode");
+  addGoogleProvider(routes, social);
+  addProvider(routes, "kakao", mobileFeature(social.kakao), "accessToken");
+  addProvider(routes, "naver", mobileFeature(social.naver), "accessToken");
+  addAppleRoutes(routes, social, siteOrigin);
 
   return routes;
+}
+
+/** Registers Google mobile login with its optional additional client IDs. */
+function addGoogleProvider<TRegistration, TClaims extends Record<string, unknown>>(
+  routes: AuthRouteDefinition[],
+  social: AuthRouteSocial<TRegistration, TClaims>,
+) {
+  const provider = social.google;
+
+  if (provider?.mobile) {
+    const options = provider.mobile === true ? undefined : provider.mobile;
+
+    addProvider(routes, "google", provider.feature.mobile(options), "idToken");
+  }
+}
+
+/** Selects and projects a mobile provider only when explicitly enabled. */
+function mobileFeature<TClaims extends Record<string, unknown>>(
+  provider?: {
+    feature: { mobile(): MobileSocialAuth<TClaims, { accessToken: string }> };
+    mobile?: true;
+  },
+) {
+  return provider?.mobile ? provider.feature.mobile() : undefined;
 }
 
 /** Registers one provider-specific mobile credential route when enabled. */
@@ -59,17 +85,28 @@ async function mobileSocialLogin<TClaims extends Record<string, unknown>, TInput
 
   return authResultResponse(request, async () => mapAuthResult(
     await social.login({ [credentialKey]: credential } as unknown as TInput),
-    serializeSocialLogin,
+    serializeMobileSocialLogin,
   ));
 }
 
-/** Converts a mobile staged-signup expiration to its JSON representation. */
-function serializeSocialLogin<TClaims extends Record<string, unknown>>(
-  result: MobileSocialLoginResult<TClaims>,
+/** Adds configured iOS Native API and Android Browser API routes. */
+function addAppleRoutes<
+  TRegistration,
+  TClaims extends Record<string, unknown>,
+>(
+  routes: AuthRouteDefinition[],
+  social: AuthRouteSocial<TRegistration, TClaims>,
+  siteOrigin: string,
 ) {
-  return result.status === "authenticated"
-    ? result
-    : { ...result, signupExpiresAt: result.signupExpiresAt.toISOString() };
+  if (social.apple?.ios) {
+    const ios = social.apple.feature.native({ appId: social.apple.ios.appId }).ios();
+
+    addProvider(routes, "apple/native", ios, "authorizationCode");
+  }
+
+  if (social.apple?.android) {
+    routes.push(...appleAndroidRoutes(social.apple, siteOrigin));
+  }
 }
 
 /** Creates the fixed mobile staged social-signup completion route. */

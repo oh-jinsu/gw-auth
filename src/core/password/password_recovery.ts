@@ -4,6 +4,7 @@ import {
 import type { PasswordResetMailer } from "./password_reset_mailer";
 import type { PasswordResetRepository } from "./password_reset_repository";
 import type { AuthResult } from "../api/auth_result";
+import type { AuthError } from "../auth_error";
 
 /** Feature-specific password-recovery dependencies and link policy. */
 export type PasswordRecoveryAuthOptions = {
@@ -12,6 +13,8 @@ export type PasswordRecoveryAuthOptions = {
   siteOrigin: string;
   resetLifetimeMs?: number;
   resetPath?: string;
+  /** Receives concealed known-account request failures for application observability. */
+  onRequestError?: (error: AuthError) => void | Promise<void>;
 };
 
 /** Framework-neutral password-recovery operations. */

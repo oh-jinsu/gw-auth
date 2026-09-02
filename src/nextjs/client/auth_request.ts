@@ -11,16 +11,27 @@ export async function authRequest<TValue = void>(
   init: RequestInit = {},
 ): Promise<AuthResult<TValue>> {
   const fetched = await fetchWithResult(input, requestOptions(init));
+  const failure = fetched.isErr ? fetched.error : undefined;
+  const response = fetched.isOk ? fetched.value : fetchErrorResponse(fetched.error);
 
-  if (fetched.isErr) {
-    return clientError("AUTH_NETWORK_FAILURE", "인증 서버에 연결하지 못했습니다.", fetched.error);
+  if (!response) {
+    return clientError("AUTH_NETWORK_FAILURE", "인증 서버에 연결하지 못했습니다.", failure);
   }
 
-  const parsed = await resultFrom(() => fetched.value.json() as Promise<unknown>);
+  const parsed = await resultFrom(() => response.json() as Promise<unknown>);
 
   return parsed.isErr
     ? clientError("INVALID_AUTH_RESPONSE", "인증 서버 응답이 유효하지 않습니다.", parsed.error)
     : parseAuthResponse<TValue>(parsed.value);
+}
+
+/** Recovers the HTTP response retained by a `gw-result` non-OK fetch error. */
+function fetchErrorResponse(error: unknown) {
+  if (typeof error !== "object" || error === null || !("response" in error)) {
+    return undefined;
+  }
+
+  return error.response instanceof Response ? error.response : undefined;
 }
 
 /** Navigates to an application-owned OAuth start Route Handler. */

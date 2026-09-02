@@ -28,7 +28,7 @@ test("applies route cookies and prevents caching", async () => {
   });
 });
 
-test("sanitizes errors and applies deletion cookies on failure", async () => {
+test("maps invalid password input to 400 and applies deletion cookies", async () => {
   const handler = routeHandler(async () => ({
     result: err(new AuthError("INVALID_PASSWORD", "로그인 실패", new Error("internal"))),
     cookies: [deleteCookie("service_refresh")],
@@ -36,7 +36,7 @@ test("sanitizes errors and applies deletion cookies on failure", async () => {
   const request = new NextRequest("https://example.test/auth/login");
   const response = await handler(request);
 
-  assert.equal(response.status, 401);
+  assert.equal(response.status, 400);
   assert.match(response.headers.get("Set-Cookie"), /service_refresh=;/);
   assert.deepEqual(await response.json(), {
     ok: false,
@@ -46,6 +46,51 @@ test("sanitizes errors and applies deletion cookies on failure", async () => {
       message: "로그인 실패",
     },
   });
+});
+
+test("maps credential and refresh failures from AuthResult operations to 401", async () => {
+  const codes = [
+    "APPLE_AUTH_FAILED",
+    "GOOGLE_AUTH_FAILED",
+    "INVALID_CREDENTIAL",
+    "INVALID_REFRESH_TOKEN",
+    "KAKAO_AUTH_FAILED",
+    "NAVER_AUTH_FAILED",
+    "SESSION_USER_MISMATCH",
+  ];
+
+  for (const code of codes) {
+    const handler = routeHandler(async () => err(new AuthError(code, "invalid")));
+    const request = new NextRequest("https://example.test/auth/mobile");
+    const response = await handler(request);
+
+    assert.equal(response.status, 401);
+    assert.equal(response.headers.get("Cache-Control"), "no-store");
+  }
+});
+
+test("maps provider outages and malformed upstream responses to 502", async () => {
+  for (const code of ["PROVIDER_UNAVAILABLE", "INVALID_PROVIDER_RESPONSE"]) {
+    const handler = routeHandler(async () => err(new AuthError(code, "upstream failure")));
+    const request = new NextRequest("https://example.test/auth/provider");
+    const response = await handler(request);
+
+    assert.equal(response.status, 502);
+  }
+});
+
+test("serializes successful AuthResult values without browser cookie effects", async () => {
+  const handler = routeHandler(async () => ok({
+    expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+  }));
+  const request = new NextRequest("https://example.test/auth/mobile");
+  const response = await handler(request);
+
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    value: { expiresAt: "2030-01-01T00:00:00.000Z" },
+  });
+  assert.equal(response.headers.has("Set-Cookie"), false);
 });
 
 test("converts NextRequest cookies to core values", () => {
@@ -77,6 +122,27 @@ test("client requests preserve the Result contract", async () => {
   assert.deepEqual(result.value, { userId: "user-1" });
   assert.equal(captured.cache, "no-store");
   assert.equal(captured.credentials, "same-origin");
+});
+
+test("client requests preserve auth errors from non-OK HTTP responses", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => Response.json({
+    ok: false,
+    error: {
+      kind: "GW_AUTH_ERROR",
+      code: "INVALID_REFRESH_TOKEN",
+      message: "invalid",
+    },
+  }, { status: 401 });
+
+  try {
+    const result = await authRequest("/auth/logout", { method: "POST" });
+
+    assert.equal(result.error.code, "INVALID_REFRESH_TOKEN");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("client OAuth navigation uses the application-owned route", () => {

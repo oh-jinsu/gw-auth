@@ -1,7 +1,8 @@
 import bcryptjs from "bcryptjs";
 import { ok, resultFrom } from "gw-result";
 
-import { authError, authSystemError } from "../auth_error";
+import { authError, authSystemError, type AuthError } from "../auth_error";
+import { bcryptPreserves } from "./bcrypt_password";
 import { hashCredential, isCredential, randomCredential } from "../credential";
 import type { PasswordResetMailer } from "./password_reset_mailer";
 import type { PasswordResetRepository } from "./password_reset_repository";
@@ -14,6 +15,7 @@ const defaultResetPath = "/reset-password";
 export type PasswordRecoveryOptions = {
   resetLifetimeMs?: number;
   resetPath?: string;
+  onRequestError?: (error: AuthError) => void | Promise<void>;
 };
 
 /** Coordinates opaque one-time password reset attempts with an injected mail adapter. */
@@ -30,11 +32,14 @@ export class PasswordRecoveryService {
 
     this.resetLifetimeMs = options.resetLifetimeMs ?? defaultResetLifetimeMs;
     this.resetPath = options.resetPath ?? defaultResetPath;
+    this.onRequestError = options.onRequestError;
   }
 
   private readonly resetLifetimeMs: number;
 
   private readonly resetPath: string;
+
+  private readonly onRequestError?: (error: AuthError) => void | Promise<void>;
 
   /** Requests recovery while returning the same success result for unknown accounts. */
   async requestPasswordReset(credentialId: string) {
@@ -59,7 +64,7 @@ export class PasswordRecoveryService {
       return invalidResetToken();
     }
 
-    if (typeof password !== "string" || !password.trim()) {
+    if (typeof password !== "string" || !password.trim() || !bcryptPreserves(password)) {
       return authError("INVALID_PASSWORD", "비밀번호가 유효하지 않습니다.");
     }
 
@@ -114,7 +119,7 @@ export class PasswordRecoveryService {
     const tokenHash = await hashCredential(token);
 
     if (tokenHash.isErr) {
-      return tokenHash;
+      return this.concealRequestError(tokenHash.error);
     }
 
     const expiresAt = new Date(Date.now() + this.resetLifetimeMs);
@@ -126,7 +131,9 @@ export class PasswordRecoveryService {
     }));
 
     if (created.isErr) {
-      return authSystemError("create_password_reset_attempt", created.error);
+      const failure = authSystemError("create_password_reset_attempt", created.error);
+
+      return this.concealRequestError(failure.error);
     }
 
     const sent = await resultFrom(() => this.mailer.sendPasswordReset({
@@ -143,17 +150,28 @@ export class PasswordRecoveryService {
       this.repository.deletePasswordResetAttempt(tokenHash.value),
     );
 
-    return authSystemError(
+    const failure = authSystemError(
       "send_password_reset",
       cleaned.isErr ? { sendError: sent.error, cleanupError: cleaned.error } : sent.error,
     );
+
+    return this.concealRequestError(failure.error);
+  }
+
+  /** Reports a known-account failure internally while preserving uniform public success. */
+  private async concealRequestError(error: AuthError) {
+    if (this.onRequestError) {
+      await resultFrom(async () => this.onRequestError?.(error));
+    }
+
+    return ok();
   }
 }
 
 /** Validates the configured origin before it is used in security-sensitive links. */
 function assertSiteOrigin(siteOrigin: string) {
   const parsed = new URL(siteOrigin);
-  const isLocalhost = ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+  const isLocalhost = ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
   const secure = parsed.protocol === "https:"
     || (parsed.protocol === "http:" && isLocalhost);
 

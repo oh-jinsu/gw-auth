@@ -15,6 +15,19 @@ import type {
   SessionUserRepository,
 } from "./session_repository";
 
+const managedAuthClaims = [
+  "aud",
+  "exp",
+  "iat",
+  "iss",
+  "jti",
+  "nbf",
+  "sessionId",
+  "sub",
+  "tokenUse",
+  "userId",
+] as const;
+
 /** Access and refresh credentials plus browser-safe authentication state. */
 export type SessionTokenPair<
   TClaims extends Record<string, unknown> = Record<string, unknown>,
@@ -236,7 +249,13 @@ export class SessionAuthService<
 function authenticationState<
   TClaims extends Record<string, unknown>,
 >(user: SessionUser<TClaims>, sessionId: string): AuthState<TClaims> {
-  return { ...user.claims, userId: user.id, sessionId };
+  const claims: Record<string, unknown> = { ...user.claims };
+
+  for (const claim of managedAuthClaims) {
+    delete claims[claim];
+  }
+
+  return { ...claims, userId: user.id, sessionId } as AuthState<TClaims>;
 }
 
 /** Creates the public refresh-token rejection while preserving a verification cause. */

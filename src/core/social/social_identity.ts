@@ -12,6 +12,9 @@ export type SocialIdentity = {
   email?: string;
   name?: string;
   picture?: string;
+  /** Apple client identifier that issued the paired provider refresh token. */
+  providerClientId?: string;
+  /** Provider refresh token that applications must encrypt at rest. */
   providerRefreshToken?: string;
 };
 

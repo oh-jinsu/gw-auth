@@ -16,15 +16,25 @@ test("signs an Apple client secret before exchanging an authorization code", asy
   const authKey = await exportPKCS8(keys.privateKey);
   const originalFetch = globalThis.fetch;
   let clientSecret;
+  let redirectUri;
+  let signal;
 
   globalThis.fetch = async (_input, init) => {
-    clientSecret = new URLSearchParams(init.body).get("client_secret");
+    const body = new URLSearchParams(init.body);
+
+    clientSecret = body.get("client_secret");
+    redirectUri = body.get("redirect_uri");
+    signal = init.signal;
 
     return new Response("invalid", { status: 400 });
   };
 
   try {
-    const apple = auth().social({ repository: {} }).apple(appleOptions(authKey)).mobile();
+    const apple = auth()
+      .social({ repository: {} })
+      .apple(appleOptions(authKey))
+      .native({ appId: "com.example.app" })
+      .ios();
     const verified = await apple.login({ authorizationCode: "authorization-code" });
 
     assert.equal(verified.isErr, true);
@@ -33,6 +43,8 @@ test("signs an Apple client secret before exchanging an authorization code", asy
   }
 
   assert.equal(typeof clientSecret, "string");
+  assert.equal(redirectUri, null);
+  assert.equal(signal instanceof AbortSignal, true);
 
   const verifiedSecret = await jwtVerify(clientSecret, keys.publicKey, {
     audience: "https://appleid.apple.com",
@@ -52,17 +64,25 @@ test("retains the Apple browser refresh token in a staged social identity", asyn
   const originalFetch = globalThis.fetch;
   const social = auth().social({ repository });
   const apple = social.apple(appleOptions(authKey)).browser({
+    serviceId: "com.example.service",
     redirectUri: "https://example.test/auth/apple/callback",
-  });
+  }).web();
   const started = await apple.start();
   const state = started.result.value.authorizationUrl.match(/state=([^&]+)/)?.[1];
   const nonce = repository.transaction.nonce;
-  const idToken = await appleIdToken(providerKeys.privateKey, nonce);
+  const idToken = await appleIdToken(
+    providerKeys.privateKey,
+    nonce,
+    "com.example.service",
+  );
+  let tokenRequest;
 
-  globalThis.fetch = async (input) => {
+  globalThis.fetch = async (input, init) => {
     if (input.toString().endsWith("/auth/keys")) {
       return Response.json({ keys: [{ ...providerKey, alg: "RS256", kid: "APPLE_KEY", use: "sig" }] });
     }
+
+    tokenRequest = new URLSearchParams(init.body);
 
     return Response.json({ id_token: idToken, refresh_token: "provider-refresh-token" });
   };
@@ -76,26 +96,87 @@ test("retains the Apple browser refresh token in a staged social identity", asyn
 
     assert.equal(completed.result.value.status, "signup_required");
     assert.equal(repository.signup.identity.providerRefreshToken, "provider-refresh-token");
+    assert.equal(repository.signup.identity.providerClientId, "com.example.service");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(tokenRequest.get("client_id"), "com.example.service");
+  assert.equal(tokenRequest.get("redirect_uri"), "https://example.test/auth/apple/callback");
+});
+
+test("separates Apple provider outages from malformed successful responses", async () => {
+  const keys = await generateKeyPair("ES256", { extractable: true });
+  const authKey = await exportPKCS8(keys.privateKey);
+  const apple = auth()
+    .social({ repository: {} })
+    .apple(appleOptions(authKey))
+    .native({ appId: "com.example.app" })
+    .ios();
+  const originalFetch = globalThis.fetch;
+  let response = () => new Response("unavailable", { status: 503 });
+
+  globalThis.fetch = async () => response();
+
+  try {
+    const unavailable = await apple.login({ authorizationCode: "authorization-code" });
+
+    response = () => new Response("not-json", {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const malformed = await apple.login({ authorizationCode: "authorization-code" });
+
+    assert.equal(unavailable.error.code, "PROVIDER_UNAVAILABLE");
+    assert.equal(malformed.error.code, "INVALID_PROVIDER_RESPONSE");
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
+test("revokes an Apple refresh token with its persisted issuing client ID", async () => {
+  const keys = await generateKeyPair("ES256", { extractable: true });
+  const authKey = await exportPKCS8(keys.privateKey);
+  const apple = auth().social({ repository: {} }).apple(appleOptions(authKey));
+  const originalFetch = globalThis.fetch;
+  let tokenRequest;
+
+  globalThis.fetch = async (_input, init) => {
+    tokenRequest = new URLSearchParams(init.body);
+
+    return new Response(null, { status: 200 });
+  };
+
+  try {
+    const revoked = await apple.revoke({
+      providerClientId: "com.example.app",
+      providerRefreshToken: "provider-refresh-token",
+    });
+
+    assert.equal(revoked.isOk, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(tokenRequest.get("client_id"), "com.example.app");
+  assert.equal(tokenRequest.get("token"), "provider-refresh-token");
+});
+
 function appleOptions(authKey) {
   return {
     authKey,
-    clientId: "com.example.app",
     teamId: "TEAM_ID",
     keyId: "KEY_ID",
   };
 }
 
 /** Signs one Apple-compatible identity token for the browser exchange test. */
-function appleIdToken(privateKey, nonce) {
+function appleIdToken(privateKey, nonce, audience) {
   return new SignJWT({ nonce })
     .setProtectedHeader({ alg: "RS256", kid: "APPLE_KEY" })
     .setIssuer("https://appleid.apple.com")
-    .setAudience("com.example.app")
+    .setAudience(audience)
     .setSubject("apple-user")
     .setIssuedAt()
     .setExpirationTime("5m")

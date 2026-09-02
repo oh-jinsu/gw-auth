@@ -3,7 +3,8 @@ import type { SocialIdentity } from "./social_identity";
 
 /**
  * Persisted one-time social signup attempt containing server-verified identity.
- * Encrypt `identity.providerRefreshToken` at rest when a provider supplies it.
+ * Encrypt `identity.providerRefreshToken` at rest and persist its paired
+ * `identity.providerClientId` when a provider supplies them.
  */
 export type NewSocialSignupAttempt = {
   tokenHash: string;

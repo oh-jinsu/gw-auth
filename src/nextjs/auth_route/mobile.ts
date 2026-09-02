@@ -36,7 +36,7 @@ export function mobileAuthRoutes<
   }
 
   if (options.social) {
-    routes.push(...mobileSocialRoutes(options.social));
+    routes.push(...mobileSocialRoutes(options.social, options.siteOrigin));
   }
 
   return routes;

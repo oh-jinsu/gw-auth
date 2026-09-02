@@ -2,6 +2,7 @@ import bcryptjs from "bcryptjs";
 import { ok, resultFrom } from "gw-result";
 
 import { authError, authSystemError } from "../auth_error";
+import { bcryptPreserves } from "./bcrypt_password";
 import type { PasswordLoginInput, PasswordSignupInput } from "./password_input";
 import type { PasswordRepository } from "./password_repository";
 import type { SessionAuthService } from "../session/session_auth_service";
@@ -23,7 +24,7 @@ export class PasswordAuthService<
 
   /** Authenticates a password without revealing whether the credential exists. */
   async login({ id, password }: PasswordLoginInput) {
-    if (!id || !password) {
+    if (!id || !password || !bcryptPreserves(password)) {
       return invalidCredential();
     }
 
@@ -54,6 +55,10 @@ export class PasswordAuthService<
   async signup(input: PasswordSignupInput<TRegistrationInput>) {
     if (!input.id.trim() || !input.password.trim()) {
       return authError("INVALID_PASSWORD", "아이디와 비밀번호가 필요합니다.");
+    }
+
+    if (!bcryptPreserves(input.password)) {
+      return authError("INVALID_PASSWORD", "비밀번호가 유효하지 않습니다.");
     }
 
     if (input.password !== input.passwordConfirm) {

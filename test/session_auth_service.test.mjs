@@ -78,12 +78,61 @@ test("preserves session repository failures as system errors", async () => {
   });
 
   assert.equal(refreshed.error.code, "AUTH_SYSTEM_FAILURE");
-  assert.match(refreshed.error.message, /find_refresh_session/);
+  assert.equal(refreshed.error.message, "인증 처리 중 시스템 오류가 발생했습니다.");
+  assert.equal(refreshed.error.cause.operation, "find_refresh_session");
+});
+
+test("removes JWT-managed claims supplied by the application", async () => {
+  const { auth, password } = await fixture({
+    claims: {
+      aud: "attacker",
+      exp: 1,
+      iat: 1,
+      iss: "attacker",
+      jti: "attacker",
+      nbf: Math.floor(Date.now() / 1000) + 3_600,
+      role: "user",
+      sessionId: "attacker",
+      sub: "attacker",
+      tokenUse: "refresh",
+      userId: "attacker",
+    },
+  });
+  const login = await auth.password({ repository: password }).mobile().login({
+    id: "member",
+    password: "secret",
+  });
+  const verified = await auth.session.mobile().verify({
+    accessToken: login.value.accessToken,
+  });
+
+  assert.equal(login.isOk, true);
+  assert.equal(verified.isOk, true);
+  assert.equal(login.value.auth.role, "user");
+  assert.equal("nbf" in login.value.auth, false);
+  assert.notEqual(login.value.auth.userId, "attacker");
+  assert.notEqual(login.value.auth.sessionId, "attacker");
+});
+
+test("rejects one secret shared by access and refresh tokens", () => {
+  const sharedSecret = "0123456789abcdef0123456789abcdef";
+
+  assert.throws(() => createAuth({
+    serviceName: "test-suite",
+    sessions: {},
+    tokens: {
+      access: { secret: sharedSecret, expiresIn: "30m" },
+      refresh: { secret: sharedSecret, expiresIn: "30d" },
+    },
+  }), /different secrets/);
 });
 
 /** Creates a public auth facade suitable for session behavior tests. */
 async function fixture(overrides = {}) {
-  const user = { id: crypto.randomUUID(), claims: { role: "user", name: "하루" } };
+  const user = {
+    id: crypto.randomUUID(),
+    claims: overrides.claims ?? { role: "user", name: "하루" },
+  };
   const sessions = new SessionStore(user);
   const password = new PasswordStore(user, await bcryptjs.hash("secret", 4));
   const auth = createAuth({

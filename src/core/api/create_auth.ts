@@ -101,6 +101,7 @@ function createContext<TClaims extends Record<string, unknown>>(
   options: CreateAuthOptions<TClaims>,
 ): AuthContext<TClaims> {
   assertServiceName(options.serviceName);
+  assertDistinctTokenSecrets(options.tokens.access.secret, options.tokens.refresh.secret);
 
   const common = {
     issuer: options.serviceName,
@@ -133,6 +134,13 @@ function createContext<TClaims extends Record<string, unknown>>(
     users: options.sessions,
     cookies: resolveBrowserCookies(options.serviceName, options.browser?.cookies),
   };
+}
+
+/** Rejects sharing one signing key across access and refresh token purposes. */
+function assertDistinctTokenSecrets(accessSecret: string, refreshSecret: string) {
+  if (accessSecret === refreshSecret) {
+    throw new TypeError("Access and refresh tokens must use different secrets.");
+  }
 }
 
 /** Rejects names that cannot safely be reused as browser-cookie prefixes. */

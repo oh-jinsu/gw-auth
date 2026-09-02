@@ -28,12 +28,17 @@ export function browserSocialRoutes<
 ) {
   const routes = socialSignupRoutes(social.signup.browser());
 
-  addProvider(routes, "google", social.google, siteOrigin);
-  addProvider(routes, "kakao", social.kakao, siteOrigin);
-  addProvider(routes, "naver", social.naver, siteOrigin);
-  addProvider(routes, "apple", social.apple, siteOrigin);
+  addProvider(routes, "google", browserFeature(social.google), siteOrigin);
+  addProvider(routes, "kakao", browserFeature(social.kakao), siteOrigin);
+  addProvider(routes, "naver", browserFeature(social.naver), siteOrigin);
+  addAppleProvider(routes, social, siteOrigin);
 
   return routes;
+}
+
+/** Selects a provider only when its browser delivery was explicitly enabled. */
+function browserFeature<TFeature>(provider?: { feature: TFeature; browser?: boolean }) {
+  return provider?.browser ? provider.feature : undefined;
 }
 
 /** Provider feature shape shared before the browser projection is selected. */
@@ -54,6 +59,36 @@ function addProvider<TClaims extends Record<string, unknown>>(
 
   const oauth = feature.browser({ redirectUri: callbackUrl(siteOrigin, name) });
 
+  addOAuth(routes, name, oauth);
+}
+
+/** Registers Apple website OAuth when a Services ID is enabled. */
+function addAppleProvider<
+  TRegistration,
+  TClaims extends Record<string, unknown>,
+>(
+  routes: AuthRouteDefinition[],
+  social: AuthRouteSocial<TRegistration, TClaims>,
+  siteOrigin: string,
+) {
+  if (!social.apple?.web) {
+    return;
+  }
+
+  const oauth = social.apple.feature.browser({
+    serviceId: social.apple.web.serviceId,
+    redirectUri: callbackUrl(siteOrigin, "apple"),
+  }).web();
+
+  addOAuth(routes, "apple", oauth);
+}
+
+/** Registers start and callback handlers for one configured browser OAuth flow. */
+function addOAuth<TClaims extends Record<string, unknown>>(
+  routes: AuthRouteDefinition[],
+  name: string,
+  oauth: BrowserOAuth<TClaims>,
+) {
   routes.push(providerStartRoute(name, oauth));
   routes.push(providerCallbackRoute("GET", name, oauth));
   routes.push(providerCallbackRoute("POST", name, oauth));
@@ -80,7 +115,12 @@ function providerCallbackRoute<TClaims extends Record<string, unknown>>(
   name: string,
   oauth: BrowserOAuth<TClaims>,
 ): AuthRouteDefinition {
-  return route(method, `${name}/callback`, (request) => oauthCallback(request, oauth));
+  return route(
+    method,
+    `${name}/callback`,
+    (request) => oauthCallback(request, oauth),
+    method === "POST",
+  );
 }
 
 /** Completes OAuth and applies its state or session cookie effects before redirecting. */
@@ -165,6 +205,7 @@ function route(
   method: AuthRouteDefinition["method"],
   path: string,
   handler: AuthRouteDefinition["handler"],
+  acceptsCrossOrigin = false,
 ): AuthRouteDefinition {
-  return { method, path, handler };
+  return { method, path, handler, acceptsCrossOrigin };
 }

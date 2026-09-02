@@ -3,9 +3,13 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 
 import { authError } from "../../auth_error";
 import type { SocialIdentity } from "../social_identity";
+import { providerVerificationError } from "../provider_response";
 
 const appleIssuer = "https://appleid.apple.com";
-const appleKeys = createRemoteJWKSet(new URL(`${appleIssuer}/auth/keys`));
+const appleKeys = createRemoteJWKSet(
+  new URL(`${appleIssuer}/auth/keys`),
+  { timeoutDuration: 10_000 },
+);
 
 /** Verifies Apple ID tokens shared by browser and mobile code exchanges. */
 export class AppleIdentityTokenVerifier {
@@ -20,11 +24,14 @@ export class AppleIdentityTokenVerifier {
     }));
 
     if (verified.isErr || typeof verified.value.payload.sub !== "string") {
-      return authError(
-        "APPLE_AUTH_FAILED",
-        "Apple 인증에 실패했습니다.",
-        verified.isErr ? verified.error : undefined,
-      );
+      return verified.isErr
+        ? providerVerificationError(
+          verified.error,
+          "apple",
+          "APPLE_AUTH_FAILED",
+          "Apple 인증에 실패했습니다.",
+        )
+        : authError("APPLE_AUTH_FAILED", "Apple 인증에 실패했습니다.");
     }
 
     if (expectedNonce && verified.value.payload.nonce !== expectedNonce) {

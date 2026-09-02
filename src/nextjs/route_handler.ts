@@ -2,10 +2,12 @@ import { NextResponse, type NextRequest } from "next/server.js";
 
 import type {
   AuthError,
+  AuthResult,
   BrowserCookieValues,
   BrowserOperation,
 } from "gw-auth/core";
 import { applyResponseCookies } from "./cookie";
+import { normalizeAuthOperation } from "./operation";
 import {
   nextAuthResponse,
   publicAuthError,
@@ -14,16 +16,27 @@ import {
 
 const unauthorizedCodes = new Set([
   "ACCESS_TOKEN_REQUIRED",
+  "INVALID_CREDENTIAL",
   "INVALID_ACCESS_TOKEN",
   "INVALID_GUEST_CREDENTIAL",
   "INVALID_OAUTH_STATE",
-  "INVALID_PASSWORD",
   "INVALID_PROVIDER_CREDENTIAL",
+  "INVALID_REFRESH_TOKEN",
   "INVALID_SOCIAL_SIGNUP_TOKEN",
   "INVALID_TOKEN",
   "REFRESH_TOKEN_REQUIRED",
   "REFRESH_TOKEN_REUSED",
+  "SESSION_USER_MISMATCH",
   "SESSION_USER_NOT_FOUND",
+  "APPLE_AUTH_FAILED",
+  "GOOGLE_AUTH_FAILED",
+  "KAKAO_AUTH_FAILED",
+  "NAVER_AUTH_FAILED",
+]);
+
+const badGatewayCodes = new Set([
+  "INVALID_PROVIDER_RESPONSE",
+  "PROVIDER_UNAVAILABLE",
 ]);
 
 /** Maps one core operation to a Next.js App Router handler invocation. */
@@ -31,6 +44,12 @@ export type NextAuthRouteOperation<TContext, TValue> = (
   request: NextRequest,
   context: TContext,
 ) => Promise<BrowserOperation<TValue>>;
+
+/** Cookie-free core result mapped by a Next.js Route Handler. */
+export type NextAuthResultRouteOperation<TContext, TValue> = (
+  request: NextRequest,
+  context: TContext,
+) => Promise<AuthResult<TValue>>;
 
 /** Optional HTTP response policy for a Next.js authentication route. */
 export type NextAuthRouteOptions<TValue> = {
@@ -42,10 +61,20 @@ export type NextAuthRouteOptions<TValue> = {
 /** Creates an App Router Route Handler and applies cookie effects on both branches. */
 export function routeHandler<TValue, TContext = unknown>(
   operation: NextAuthRouteOperation<TContext, TValue>,
+  options?: NextAuthRouteOptions<TValue>,
+): (request: NextRequest, context: TContext) => Promise<NextResponse>;
+export function routeHandler<TValue, TContext = unknown>(
+  operation: NextAuthResultRouteOperation<TContext, TValue>,
+  options?: NextAuthRouteOptions<TValue>,
+): (request: NextRequest, context: TContext) => Promise<NextResponse>;
+export function routeHandler<TValue, TContext = unknown>(
+  operation:
+    | NextAuthRouteOperation<TContext, TValue>
+    | NextAuthResultRouteOperation<TContext, TValue>,
   options: NextAuthRouteOptions<TValue> = {},
 ) {
   return async (request: NextRequest, context: TContext) => {
-    const completed = await operation(request, context);
+    const completed = normalizeAuthOperation(await operation(request, context));
     const response = operationResponse(completed, request, options);
 
     applyResponseCookies(response, completed.cookies);
@@ -101,6 +130,10 @@ function preventCaching(response: NextResponse) {
 function defaultErrorStatus(error: NextAuthError) {
   if (error.code === "AUTH_SYSTEM_FAILURE") {
     return 500;
+  }
+
+  if (badGatewayCodes.has(error.code)) {
+    return 502;
   }
 
   if (error.code.endsWith("ALREADY_EXISTS")) {

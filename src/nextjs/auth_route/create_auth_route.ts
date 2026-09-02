@@ -5,6 +5,7 @@ import { browserSocialRoutes } from "./browser_social";
 import { mobileAuthRoutes } from "./mobile";
 import {
   authMethodNotAllowed,
+  authOriginForbidden,
   authRouteNotFound,
 } from "./response";
 import type {
@@ -27,13 +28,25 @@ export function createAuthRoute<
   options: AuthRouteOptions<TClaims, TPasswordRegistration, TSocialRegistration>,
 ): AuthRouteHandlers {
   assertSiteOrigin(options.siteOrigin);
+  assertAndroidPackageId(options.social?.apple?.android?.packageId);
 
   const routes = allRoutes(options);
 
   return {
-    GET: methodHandler("GET", routes),
-    POST: methodHandler("POST", routes),
+    GET: methodHandler("GET", routes, options.siteOrigin),
+    POST: methodHandler("POST", routes, options.siteOrigin),
   };
+}
+
+/** Rejects Android package identifiers that could alter an Intent URI. */
+function assertAndroidPackageId(packageId?: string) {
+  const segment = "[A-Za-z][A-Za-z0-9_]*";
+  const packagePattern = new RegExp(`^${segment}(\\.${segment})+$`);
+  const valid = packageId === undefined || packagePattern.test(packageId);
+
+  if (!valid) {
+    throw new TypeError("AuthRoute Apple Android packageId is invalid.");
+  }
 }
 
 /** Collects browser, mobile, and optional social routes once at composition time. */
@@ -58,9 +71,10 @@ function allRoutes<
 function methodHandler(
   method: AuthRouteMethod,
   routes: AuthRouteDefinition[],
+  siteOrigin: string,
 ) {
   return (request: NextRequest, context: AuthRouteContext) => {
-    return dispatchRoute(method, routes, request, context);
+    return dispatchRoute(method, routes, request, context, siteOrigin);
   };
 }
 
@@ -70,17 +84,29 @@ async function dispatchRoute(
   routes: AuthRouteDefinition[],
   request: NextRequest,
   context: AuthRouteContext,
+  siteOrigin: string,
 ) {
   const path = await authPath(context);
   const matched = routes.find((route) => route.path === path && route.method === method);
 
   if (matched) {
+    if (!matched.acceptsCrossOrigin && !hasTrustedOrigin(request, siteOrigin)) {
+      return authOriginForbidden();
+    }
+
     return matched.handler(request);
   }
 
   const allowed = routes.filter((route) => route.path === path).map((route) => route.method);
 
   return allowed.length ? authMethodNotAllowed(allowed) : authRouteNotFound();
+}
+
+/** Accepts same-origin browser requests and clients that do not send Origin. */
+function hasTrustedOrigin(request: NextRequest, siteOrigin: string) {
+  const origin = request.headers.get("Origin");
+
+  return origin === null || origin === siteOrigin;
 }
 
 /** Joins the required catch-all parameter into one internal route key. */

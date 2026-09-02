@@ -1,5 +1,3 @@
-import { fetchWithResult } from "gw-result";
-
 import { authError } from "../../auth_error";
 import { GoogleIdTokenVerifier } from "./google_id_token_verifier";
 import type {
@@ -7,7 +5,13 @@ import type {
   OAuthCodeVerification,
   OAuthProvider,
 } from "../oauth/oauth_provider";
-import { providerJson, providerString } from "../provider_response";
+import { providerFetch } from "../provider_fetch";
+import {
+  invalidProviderResponse,
+  providerJson,
+  providerRequestError,
+  providerString,
+} from "../provider_response";
 
 /** Configuration for Google's server-side OpenID Connect code flow. */
 export type GoogleAuthOptions = {
@@ -58,7 +62,7 @@ export class GoogleAuth implements OAuthProvider {
       return authError("INVALID_OAUTH_STATE", "Google OAuth 상태가 유효하지 않습니다.");
     }
 
-    const fetched = await fetchWithResult("https://oauth2.googleapis.com/token", {
+    const fetched = await providerFetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -72,11 +76,17 @@ export class GoogleAuth implements OAuthProvider {
     });
 
     if (fetched.isErr) {
-      return authError("GOOGLE_AUTH_FAILED", "Google 인증에 실패했습니다.", fetched.error);
+      return providerRequestError(
+        fetched.error,
+        "google",
+        "GOOGLE_AUTH_FAILED",
+        "Google 인증에 실패했습니다.",
+      );
     }
 
     const json = await providerJson(
       fetched.value,
+      "google",
       "GOOGLE_AUTH_FAILED",
       "Google 인증에 실패했습니다.",
     );
@@ -89,6 +99,6 @@ export class GoogleAuth implements OAuthProvider {
 
     return idToken
       ? this.idTokens.verify(idToken, verification.nonce)
-      : authError("GOOGLE_AUTH_FAILED", "Google ID 토큰이 없습니다.");
+      : invalidProviderResponse("google", { missing: "id_token" });
   }
 }

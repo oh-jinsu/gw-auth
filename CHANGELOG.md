@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.5.0 - 2026-09-03
+
+- Rejected backslash-based external redirect bypasses, stripped all JWT-managed
+  claims from application auth state, and rejected shared access/refresh keys.
+- Normalized Next.js `getAuth` to `AuthState`, made logout clear stale local
+  state after server-processed failures, preserved non-OK auth envelopes in the
+  client, and corrected 400/401/502 status maps.
+- Added fixed-route Origin and JSON Content-Type checks while preserving
+  provider form-post callbacks and Origin-less native/server clients.
+- Made fixed-route Google, Kakao, and Naver delivery explicit with
+  `{ feature, browser, mobile }`, including mobile Google audience options.
+- Kept password-reset discovery uniform across known-account storage and mail
+  failures with an internal `onRequestError` observability hook.
+- Added 10-second provider request and remote-key timeouts and separated invalid
+  credentials, provider unavailability, and malformed successful responses.
+- Bound stored Apple refresh tokens to their issuing client ID and moved
+  revocation to `apple.revoke({ providerRefreshToken, providerClientId })`.
+- Strengthened repository conformance assertions for duplicate social identity
+  races, returned reset user IDs, and preservation of unrelated sessions.
+- Documented mandatory application-owned rate limiting for every auth boundary.
+- Removed internal operation names from public system-error messages while
+  retaining them in the private error cause.
+- Fixed the Next.js default HTTP mapping so invalid credentials, invalid
+  refresh tokens, and session-user mismatches return 401 instead of 400.
+- Extended the existing `routeHandler` and `serverAction` adapters to accept
+  cookie-free `AuthResult<T>` operations as well as browser operations.
+- Normalized the fixed `/api/auth/session` response to browser-safe `AuthState`
+  without JWT metadata.
+- Rejected passwords that bcrypt would truncate after 72 UTF-8 bytes during
+  password login, signup, and reset.
+- Added `gw-auth/testing` repository conformance assertions for refresh-session
+  CAS, OAuth and social-signup single consumption, and atomic password reset
+  with complete refresh-session revocation.
+- Split Apple configuration into its Browser API for website and Android
+  delivery and its Native API for iOS delivery, requiring the correct Services
+  ID, App ID, and return URI at each boundary.
+- Added server-owned, single-use state and nonce for Flutter Android Apple
+  login and fixed Next.js routes that relay Apple's callback to the
+  `sign_in_with_apple` Intent before completing token exchange.
+- Replaced the ambiguous Apple mobile projection with `.browser(...).web()`,
+  `.browser(...).android()`, and `.native(...).ios()`; no caller-selected
+  client type is exposed.
+
 ## 0.4.1
 
 - Added a fixed Next.js catch-all `createAuthRoute` preset that projects one

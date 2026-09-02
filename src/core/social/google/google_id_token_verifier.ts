@@ -3,8 +3,12 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 
 import { authError } from "../../auth_error";
 import type { SocialIdentityVerifier } from "../social_identity";
+import { providerVerificationError } from "../provider_response";
 
-const googleKeys = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
+const googleKeys = createRemoteJWKSet(
+  new URL("https://www.googleapis.com/oauth2/v3/certs"),
+  { timeoutDuration: 10_000 },
+);
 const googleIssuers = ["accounts.google.com", "https://accounts.google.com"];
 
 /** Verifies Google ID-token signature, issuer, audience, and optional nonce. */
@@ -20,11 +24,14 @@ export class GoogleIdTokenVerifier implements SocialIdentityVerifier {
     }));
 
     if (verified.isErr || typeof verified.value.payload.sub !== "string") {
-      return authError(
-        "GOOGLE_AUTH_FAILED",
-        "Google 인증에 실패했습니다.",
-        verified.isErr ? verified.error : undefined,
-      );
+      return verified.isErr
+        ? providerVerificationError(
+          verified.error,
+          "google",
+          "GOOGLE_AUTH_FAILED",
+          "Google 인증에 실패했습니다.",
+        )
+        : authError("GOOGLE_AUTH_FAILED", "Google 인증에 실패했습니다.");
     }
 
     if (expectedNonce && verified.value.payload.nonce !== expectedNonce) {

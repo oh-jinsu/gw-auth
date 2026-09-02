@@ -19,9 +19,16 @@ import {
   startOAuth,
   useAuth,
 } from "../src/nextjs/client";
+import {
+  assertOAuthTransactionRepositoryConformance,
+  assertPasswordResetRepositoryConformance,
+  assertSessionRepositoryConformance,
+  assertSocialRepositoryConformance,
+} from "../src/testing";
 
 /** Application-owned claims used to exercise generic public contracts. */
 type ApplicationClaims = {
+  nbf: number;
   permissions: string[];
 };
 
@@ -72,6 +79,27 @@ const browserGoogle = social.google({
   clientSecret: "google-secret",
 }).browser({ redirectUri: "https://example.test/auth/google/callback" });
 const mobileGoogle = social.google({ clientId: "google-client" }).mobile();
+const appleOptions = {
+  authKey: "apple-auth-key",
+  teamId: "apple-team",
+  keyId: "apple-key",
+};
+const apple = social.apple({
+  ...appleOptions,
+});
+const browserApple = apple.browser({
+  serviceId: "apple-service",
+  redirectUri: "https://example.test/auth/apple/callback",
+}).web();
+const androidApple = apple.browser({
+  serviceId: "apple-service",
+  redirectUri: "https://example.test/api/auth/mobile/apple/callback",
+}).android();
+const iosApple = apple.native({ appId: "com.example.app" }).ios();
+// @ts-expect-error Apple signing configuration no longer accepts a client selector.
+social.apple({ ...appleOptions, clientId: "apple-client" });
+// @ts-expect-error Apple selects its Browser or Native API before delivery.
+apple.mobile();
 const mobileOnlySocial = auth.social({ repository: socialRepository });
 const authRoute = createAuthRoute({
   siteOrigin: "https://example.test",
@@ -79,10 +107,23 @@ const authRoute = createAuthRoute({
   password: auth.password({ repository: passwordRepository }),
   social: {
     signup: social.signup,
-    google: social.google({
-      clientId: "google-client",
-      clientSecret: "google-secret",
-    }),
+    google: {
+      feature: social.google({
+        clientId: "google-client",
+        clientSecret: "google-secret",
+      }),
+      browser: true,
+      mobile: { clientIds: ["google-ios", "google-android"] },
+    },
+    apple: {
+      feature: apple,
+      web: { serviceId: "apple-service" },
+      android: {
+        serviceId: "apple-service",
+        packageId: "com.example.app",
+      },
+      ios: { appId: "com.example.app" },
+    },
   },
 });
 
@@ -100,6 +141,16 @@ void browserGoogle.complete({
   cookies: { "type-test_oauth_state": "state" },
 });
 void mobileGoogle.login({ idToken: "google-id-token" });
+void browserApple.start();
+void androidApple.start();
+void androidApple.complete({ authorizationCode: "apple-code", state: "apple-state" });
+void iosApple.login({ authorizationCode: "apple-code" });
+void apple.revoke({
+  providerClientId: "com.example.app",
+  providerRefreshToken: "apple-refresh-token",
+});
+// @ts-expect-error Revocation must use the base Apple feature with its stored client ID.
+iosApple.revoke({ providerRefreshToken: "apple-refresh-token" });
 void mobileOnlySocial.kakao().mobile().login({ accessToken: "kakao-access-token" });
 void social.signup.browser().complete({
   cookies: { "type-test_social_signup": "signup-token" },
@@ -113,10 +164,16 @@ const authState: AuthState<ApplicationClaims> = {
 };
 
 void authState;
+// @ts-expect-error JWT-managed claims are never part of public authentication state.
+authState.nbf;
 void authRoute.GET;
 void authRoute.POST;
 
 const loginRoute = routeHandler(async () => browserPassword.login({
+  id: "member",
+  password: "secret",
+}));
+const mobileLoginRoute = routeHandler(async () => mobilePassword.login({
   id: "member",
   password: "secret",
 }));
@@ -126,13 +183,37 @@ async function loginAction() {
   return serverAction(() => browserPassword.login({ id: "member", password: "secret" }));
 }
 
+/** Exercises a cookie-free mobile result through the same Server Action adapter. */
+async function mobileLoginAction() {
+  return serverAction(() => mobilePassword.login({ id: "member", password: "secret" }));
+}
+
 void loginRoute;
+void mobileLoginRoute;
 void loginAction;
+void mobileLoginAction;
 void authRequest<AuthState<ApplicationClaims>>("/auth/login");
 void withAuth(auth.session.browser(), async (_request, _event, currentAuth) => {
   return Response.json({ authenticated: currentAuth !== undefined });
 });
 void getAuth(auth.session.browser());
+
+/** Verifies that Next.js server auth returns normalized browser-safe state. */
+async function inspectServerAuth() {
+  const current = await getAuth(auth.session.browser());
+
+  if (current.isOk) {
+    current.value.permissions;
+    // @ts-expect-error JWT-managed claims are absent from normalized getAuth state.
+    current.value.nbf;
+  }
+}
+
+void inspectServerAuth;
 void AuthProvider<ApplicationClaims>;
 void useAuth<ApplicationClaims>;
 void startOAuth;
+void assertSessionRepositoryConformance;
+void assertOAuthTransactionRepositoryConformance;
+void assertSocialRepositoryConformance;
+void assertPasswordResetRepositoryConformance;

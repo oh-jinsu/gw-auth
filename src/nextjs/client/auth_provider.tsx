@@ -44,6 +44,11 @@ type DefaultAuthContext = AuthContextValue<Record<string, unknown>>;
 
 const AuthContext = createContext<DefaultAuthContext | undefined>(undefined);
 
+const unconfirmedLogoutCodes = new Set([
+  "AUTH_NETWORK_FAILURE",
+  "INVALID_AUTH_RESPONSE",
+]);
+
 /** Provides reactive auth state without owning application route names. */
 export function AuthProvider<
   TClaims extends Record<string, unknown> = Record<string, unknown>,
@@ -104,14 +109,14 @@ function useAuthenticate<TClaims extends Record<string, unknown>>(
   }, [setAuth]);
 }
 
-/** Creates a logout request that clears state after confirmed success. */
+/** Clears local state whenever the server was reached and processed logout. */
 function useLogout<TClaims extends Record<string, unknown>>(
   setAuth: (auth?: AuthState<TClaims>) => void,
 ) {
   return useCallback(async (input: RequestInfo | URL, init?: RequestInit) => {
     const result = await authRequest(input, init);
 
-    if (result.isOk) {
+    if (result.isOk || !unconfirmedLogoutCodes.has(result.error.code)) {
       setAuth(undefined);
     }
 

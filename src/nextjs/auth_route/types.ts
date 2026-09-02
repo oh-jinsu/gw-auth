@@ -1,5 +1,6 @@
 import type {
   AppleSocialAuth,
+  GoogleMobileOptions,
   GoogleSocialAuth,
   GuestAuth,
   KakaoSocialAuth,
@@ -31,16 +32,36 @@ export type AuthRouteHandlers = {
   POST: AuthRouteHandler;
 };
 
-/** Unprojected social features enabled on the fixed browser and mobile routes. */
+/** Apple API identifiers and Android package binding enabled on the fixed route. */
+export type AuthRouteApple<TClaims extends Record<string, unknown>> = {
+  /** Apple feature configured with the shared signing key. */
+  feature: AppleSocialAuth<TClaims>;
+
+  /** Enables website Apple login with this Services ID. */
+  web?: { serviceId: string };
+
+  /** Enables Flutter Android Apple login with this Services ID and package. */
+  android?: { serviceId: string; packageId: string };
+
+  /** Enables native iOS Apple login with this App ID. */
+  ios?: { appId: string };
+};
+
+/** Explicit delivery selection for one provider used by the fixed route. */
+export type AuthRouteProvider<TFeature, TMobile = true> =
+  | { feature: TFeature; browser: true; mobile?: TMobile }
+  | { feature: TFeature; browser?: false; mobile: TMobile };
+
+/** Social features and the browser/mobile deliveries enabled for each provider. */
 export type AuthRouteSocial<
   TRegistrationInput,
   TClaims extends Record<string, unknown>,
 > = {
   signup: SocialSignupAuth<TRegistrationInput, TClaims>;
-  google?: GoogleSocialAuth<TClaims>;
-  kakao?: KakaoSocialAuth<TClaims>;
-  naver?: NaverSocialAuth<TClaims>;
-  apple?: AppleSocialAuth<TClaims>;
+  google?: AuthRouteProvider<GoogleSocialAuth<TClaims>, true | GoogleMobileOptions>;
+  kakao?: AuthRouteProvider<KakaoSocialAuth<TClaims>>;
+  naver?: AuthRouteProvider<NaverSocialAuth<TClaims>>;
+  apple?: AuthRouteApple<TClaims>;
 };
 
 /** Features and trusted origin consumed by the fixed Next.js authentication route. */
@@ -73,4 +94,6 @@ export type AuthRouteDefinition = {
   method: AuthRouteMethod;
   path: string;
   handler: (request: NextRequest) => Promise<NextResponse>;
+  /** Allows provider-owned form-post callbacks with a foreign Origin header. */
+  acceptsCrossOrigin?: boolean;
 };

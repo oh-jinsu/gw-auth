@@ -30,8 +30,8 @@ export function authError<TCode extends string>(
 export function authSystemError(operation: string, cause: unknown) {
   return authError(
     "AUTH_SYSTEM_FAILURE",
-    `인증 처리 중 시스템 오류가 발생했습니다: ${operation}`,
-    cause,
+    "인증 처리 중 시스템 오류가 발생했습니다.",
+    { operation, cause },
   );
 }
 

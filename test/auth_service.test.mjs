@@ -99,13 +99,31 @@ test("preserves expected and infrastructure failures as AuthError results", asyn
   assert.equal(unavailable.error.code, "AUTH_SYSTEM_FAILURE");
 });
 
+test("rejects passwords that bcrypt would truncate", async () => {
+  const acceptedPrefix = "a".repeat(72);
+  const truncatedPassword = `${acceptedPrefix}b`;
+  const { auth, password } = await testAuth(acceptedPrefix);
+  const mobile = auth.password({ repository: password }).mobile();
+  const login = await mobile.login({ id: "member", password: truncatedPassword });
+  const signup = await mobile.signup({
+    id: "long-password",
+    password: "가".repeat(25),
+    passwordConfirm: "가".repeat(25),
+    registration: { displayName: "Long Password" },
+  });
+
+  assert.equal(login.error.code, "INVALID_CREDENTIAL");
+  assert.equal(signup.error.code, "INVALID_PASSWORD");
+  assert.equal(password.createdAccounts.length, 0);
+});
+
 /** Creates the public facade with in-memory password and session repositories. */
-async function testAuth() {
+async function testAuth(existingPassword = "secret") {
   const user = {
     id: crypto.randomUUID(),
     claims: { role: "user", name: "Member" },
   };
-  const passwordHash = await bcryptjs.hash("secret", 4);
+  const passwordHash = await bcryptjs.hash(existingPassword, 4);
   const password = new MemoryPasswordRepository(user, passwordHash);
   const sessions = new MemorySessionRepository(user);
   const auth = createAuth({

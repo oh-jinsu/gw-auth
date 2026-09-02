@@ -26,4 +26,10 @@ export default defineConfig([
     outDir: "dist/nextjs/client",
     clean: true,
   },
+  {
+    ...shared,
+    entry: ["src/testing/index.ts"],
+    outDir: "dist/testing",
+    clean: true,
+  },
 ]);

@@ -1,13 +1,16 @@
-import { fetchWithResult } from "gw-result";
-
-import { authError } from "../../auth_error";
 import { NaverAccessTokenVerifier } from "./naver_access_token_verifier";
 import type {
   OAuthAuthorizationRequest,
   OAuthCodeVerification,
   OAuthProvider,
 } from "../oauth/oauth_provider";
-import { providerJson, providerString } from "../provider_response";
+import { providerFetch } from "../provider_fetch";
+import {
+  invalidProviderResponse,
+  providerJson,
+  providerRequestError,
+  providerString,
+} from "../provider_response";
 
 /** Configuration for Naver's server-side authorization-code flow. */
 export type NaverAuthOptions = {
@@ -48,7 +51,7 @@ export class NaverAuth implements OAuthProvider {
 
   /** Exchanges a state-bound Naver code and resolves the provider identity. */
   async verifyAuthorizationCode(verification: OAuthCodeVerification) {
-    const fetched = await fetchWithResult("https://nid.naver.com/oauth2.0/token", {
+    const fetched = await providerFetch("https://nid.naver.com/oauth2.0/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -61,11 +64,17 @@ export class NaverAuth implements OAuthProvider {
     });
 
     if (fetched.isErr) {
-      return authError("NAVER_AUTH_FAILED", "Naver 인증에 실패했습니다.", fetched.error);
+      return providerRequestError(
+        fetched.error,
+        "naver",
+        "NAVER_AUTH_FAILED",
+        "Naver 인증에 실패했습니다.",
+      );
     }
 
     const json = await providerJson(
       fetched.value,
+      "naver",
       "NAVER_AUTH_FAILED",
       "Naver 인증에 실패했습니다.",
     );
@@ -78,6 +87,6 @@ export class NaverAuth implements OAuthProvider {
 
     return accessToken
       ? this.accessTokens.verify(accessToken)
-      : authError("NAVER_AUTH_FAILED", "Naver 액세스 토큰이 없습니다.");
+      : invalidProviderResponse("naver", { missing: "access_token" });
   }
 }

@@ -1,24 +1,43 @@
-import { fetchWithResult, ok, resultFrom } from "gw-result";
+import { ok } from "gw-result";
 
-import { authError } from "../../auth_error";
+import { providerFetch } from "../provider_fetch";
+import {
+  invalidProviderResponse,
+  providerJson,
+  providerRequestError,
+} from "../provider_response";
 import type { SocialIdentityVerifier } from "../social_identity";
 
 /** Resolves and validates a Naver access token through Naver's profile API. */
 export class NaverAccessTokenVerifier implements SocialIdentityVerifier {
   /** Verifies a Naver bearer token and normalizes its user identity. */
   async verify(accessToken: string) {
-    const fetched = await fetchWithResult("https://openapi.naver.com/v1/nid/me", {
+    const fetched = await providerFetch("https://openapi.naver.com/v1/nid/me", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    if (fetched.isErr || !fetched.value.ok) {
-      return authError("NAVER_AUTH_FAILED", "Naver 인증에 실패했습니다.");
+    if (fetched.isErr) {
+      return providerRequestError(
+        fetched.error,
+        "naver",
+        "NAVER_AUTH_FAILED",
+        "Naver 인증에 실패했습니다.",
+      );
     }
 
-    const parsed = await resultFrom(() => fetched.value.json());
+    const parsed = await providerJson(
+      fetched.value,
+      "naver",
+      "NAVER_AUTH_FAILED",
+      "Naver 인증에 실패했습니다.",
+    );
 
-    if (parsed.isErr || !isNaverUser(parsed.value)) {
-      return authError("NAVER_AUTH_FAILED", "Naver 인증에 실패했습니다.");
+    if (parsed.isErr) {
+      return parsed;
+    }
+
+    if (!isNaverUser(parsed.value)) {
+      return invalidProviderResponse("naver");
     }
 
     return ok(naverIdentity(parsed.value.response));

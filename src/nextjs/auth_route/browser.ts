@@ -6,11 +6,13 @@ import type {
 } from "gw-auth/core";
 import type { NextRequest } from "next/server.js";
 
+import { publicAuthState } from "../auth_state";
 import { nextRequestCookies } from "../route_handler";
 import {
   authResultResponse,
   browserOperationResponse,
   invalidAuthRequest,
+  mapAuthResult,
 } from "./response";
 import { readJsonObject, requiredString } from "./request";
 import type { AuthRouteDefinition, AuthRouteOptions } from "./types";
@@ -45,7 +47,10 @@ function sessionRoutes<TClaims extends Record<string, unknown>>(
   return [
     route("GET", "session", (request) => authResultResponse(
       request,
-      () => session.verify({ cookies: nextRequestCookies(request) }),
+      async () => mapAuthResult(
+        await session.verify({ cookies: nextRequestCookies(request) }),
+        publicAuthState,
+      ),
     )),
     route("POST", "refresh", (request) => browserOperationResponse(
       request,

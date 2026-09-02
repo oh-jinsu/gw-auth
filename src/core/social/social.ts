@@ -49,7 +49,7 @@ export type SocialAuth<
   /** Configures Naver credentials before selecting browser or mobile delivery. */
   naver(options?: NaverOptions): NaverSocialAuth<TClaims>;
 
-  /** Configures Apple credentials before selecting browser or mobile delivery. */
+  /** Configures Apple signing credentials before selecting its Browser or Native API. */
   apple(options: AppleOptions): AppleSocialAuth<TClaims>;
 
   /** Provides provider-independent staged social-signup operations. */

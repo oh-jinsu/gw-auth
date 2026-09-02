@@ -57,6 +57,49 @@ test("returns stable no-store errors for malformed, missing, and wrong-method ro
   assert.equal(missing.headers.get("Cache-Control"), "no-store");
 });
 
+test("rejects foreign browser origins and non-JSON mutation bodies", async () => {
+  const captured = {};
+  const handlers = createAuthRoute({
+    siteOrigin: "https://example.test",
+    session: sessionFeature(),
+    password: passwordFeature(captured),
+  });
+  const foreignOrigin = await handlers.POST(
+    jsonRequest("login", { id: "member", password: "secret" }, "https://attacker.test"),
+    routeContext("login"),
+  );
+  const textBody = await handlers.POST(
+    new NextRequest("https://example.test/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ id: "member", password: "secret" }),
+    }),
+    routeContext("login"),
+  );
+
+  assert.equal(foreignOrigin.status, 403);
+  assert.equal((await foreignOrigin.json()).error.code, "AUTH_ORIGIN_FORBIDDEN");
+  assert.equal(textBody.status, 400);
+  assert.equal(captured.browserLogin, undefined);
+});
+
+test("returns only normalized AuthState from the browser session route", async () => {
+  const handlers = createAuthRoute({
+    siteOrigin: "https://example.test",
+    session: sessionFeature(),
+  });
+  const response = await handlers.GET(
+    new NextRequest("https://example.test/api/auth/session"),
+    routeContext("session"),
+  );
+
+  assert.deepEqual((await response.json()).value, {
+    userId: "user",
+    sessionId: "session",
+    role: "member",
+  });
+});
+
 test("accepts only exact trusted callback origins", () => {
   assert.doesNotThrow(() => createAuthRoute({
     siteOrigin: "http://localhost:3000",
@@ -101,16 +144,47 @@ test("derives OAuth callbacks and serves browser and mobile provider routes", as
   assert.equal(mobileBody.value.signupExpiresAt, "2030-01-01T00:00:00.000Z");
 });
 
+test("projects an explicitly mobile-only Google provider without a browser route", async () => {
+  const captured = {};
+  const handlers = createAuthRoute({
+    siteOrigin: "https://example.test",
+    session: sessionFeature(),
+    social: {
+      signup: socialFeatures({}).signup,
+      google: {
+        feature: googleFeature(captured),
+        mobile: { clientIds: ["ios-client", "android-client"] },
+      },
+    },
+  });
+  const browser = await handlers.GET(
+    new NextRequest("https://example.test/api/auth/google"),
+    routeContext("google"),
+  );
+  const mobile = await handlers.POST(
+    jsonRequest("mobile/google", { idToken: "provider-token" }),
+    routeContext("mobile", "google"),
+  );
+
+  assert.equal(browser.status, 404);
+  assert.equal(mobile.status, 200);
+  assert.deepEqual(captured.mobileOptions, { clientIds: ["ios-client", "android-client"] });
+  assert.equal(captured.redirectUri, undefined);
+});
+
 /** Creates the dynamic context used by `[...auth]`. */
 function routeContext(...auth) {
   return { params: Promise.resolve({ auth }) };
 }
 
 /** Creates one JSON request under the fixed authentication route. */
-function jsonRequest(path, body) {
+function jsonRequest(path, body, origin) {
   return new NextRequest(`https://example.test/api/auth/${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(origin ? { Origin: origin } : {}),
+    },
     body: JSON.stringify(body),
   });
 }
@@ -119,7 +193,16 @@ function jsonRequest(path, body) {
 function sessionFeature() {
   return {
     browser: () => ({
-      verify: async () => ok({ userId: "user", sessionId: "session", tokenUse: "access" }),
+      verify: async () => ok({
+        userId: "user",
+        sessionId: "session",
+        role: "member",
+        tokenUse: "access",
+        iss: "test-service",
+        aud: "test-service",
+        iat: 1_000,
+        exp: 2_000,
+      }),
       refresh: async () => browserOperation({ userId: "user", sessionId: "session" }),
       logout: async () => browserOperation(),
     }),
@@ -177,7 +260,7 @@ function socialFeatures(captured) {
         complete: async () => ok(mobileSession()),
       }),
     },
-    google: googleFeature(captured),
+    google: { feature: googleFeature(captured), browser: true, mobile: true },
   };
 }
 
@@ -189,18 +272,22 @@ function googleFeature(captured) {
 
       return browserGoogle(captured);
     },
-    mobile: () => ({
-      login: async ({ idToken }) => {
-        captured.idToken = idToken;
+    mobile: (options) => {
+      captured.mobileOptions = options;
 
-        return ok({
-          status: "signup_required",
-          signupToken: "signup-token",
-          signupExpiresAt: new Date("2030-01-01T00:00:00.000Z"),
-          profile: { provider: "google" },
-        });
-      },
-    }),
+      return {
+        login: async ({ idToken }) => {
+          captured.idToken = idToken;
+
+          return ok({
+            status: "signup_required",
+            signupToken: "signup-token",
+            signupExpiresAt: new Date("2030-01-01T00:00:00.000Z"),
+            profile: { provider: "google" },
+          });
+        },
+      };
+    },
   };
 }
 
