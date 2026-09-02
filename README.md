@@ -26,7 +26,13 @@ import {
   type SocialRepository,
 } from "gw-auth/core";
 
-import { getAuth, routeHandler, serverAction, withAuth } from "gw-auth/nextjs";
+import {
+  createAuthRoute,
+  getAuth,
+  routeHandler,
+  serverAction,
+  withAuth,
+} from "gw-auth/nextjs";
 import {
   AuthProvider,
   authRequest,
@@ -69,6 +75,11 @@ package uses it as both JWT issuer and audience and prefixes every default
 cookie name with it. It may contain letters, numbers, dots, underscores, and
 hyphens.
 
+Create this facade once for a service. Browser and mobile clients of the same
+service must share the same `auth`, repositories, token policy, issuer, and
+audience. Do not create `webAuth` and `mobileAuth`, and do not put a platform
+name in `serviceName` merely to separate delivery environments.
+
 Each token secret must contain at least 32 UTF-8 bytes. The package validates
 the issuer, audience, expiration, token purpose, user, session, and refresh
 rotation fields internally.
@@ -98,16 +109,19 @@ environment:
 auth.<feature>(feature dependencies).<browser|mobile>(environment options)
 ```
 
-Examples:
+Configure a feature once, then project that same object where needed:
 
 ```ts
-auth.password({ repository }).browser();
-auth.password({ repository }).mobile();
+const password = auth.password({ repository });
 
-auth
-  .social({ repository })
-  .google({ clientId, clientSecret })
-  .browser({ redirectUri });
+const browserPassword = password.browser();
+const mobilePassword = password.mobile();
+
+const social = auth.social({ repository });
+const google = social.google({ clientId, clientSecret });
+
+const browserGoogle = google.browser({ redirectUri });
+const mobileGoogle = google.mobile();
 ```
 
 Feature repositories are required only when their feature is enabled.
@@ -369,8 +383,92 @@ authentication or credential-bearing response.
 
 ## Next.js App Router
 
-The Next.js adapter owns only framework conversion. The application still owns
-route locations, request validation, redirects, and feature composition.
+Use the fixed AuthRoute for the shortest setup. Use the lower-level adapters
+when the application needs different paths, body schemas, validation, or
+redirect behavior. Both choices keep Next.js outside the core package.
+
+### Prebuilt AuthRoute
+
+`createAuthRoute` turns the same unprojected feature objects into browser and
+mobile routes. Do not call `.browser()` or `.mobile()` before passing a feature
+to it.
+
+```ts
+// src/auth.ts
+import { createAuth } from "gw-auth/core";
+import { createAuthRoute } from "gw-auth/nextjs";
+
+export const auth = createAuth({
+  serviceName: "my-service",
+  sessions: sessionRepository,
+  tokens: tokenOptions,
+});
+
+const password = auth.password({ repository: passwordRepository });
+const social = auth.social({
+  repository: socialRepository,
+  transactions: oauthTransactionRepository,
+});
+
+export const authRoute = createAuthRoute({
+  siteOrigin: "https://app.example.com",
+  session: auth.session,
+  password,
+  social: {
+    signup: social.signup,
+    google: social.google({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+  },
+});
+```
+
+The catch-all Route Handler only re-exports the two generated methods:
+
+```ts
+// app/api/auth/[...auth]/route.ts
+import { authRoute } from "@/auth";
+
+export const { GET, POST } = authRoute;
+```
+
+The preset owns these contracts:
+
+| Client | Method and path | Body or query |
+| --- | --- | --- |
+| Browser | `GET /api/auth/session` | none |
+| Browser | `POST /api/auth/login` | `{ id, password }` |
+| Browser | `POST /api/auth/signup` | `{ id, password, passwordConfirm, registration }` |
+| Browser | `POST /api/auth/refresh` | none; refresh token comes from cookies |
+| Browser | `POST /api/auth/logout` | none; refresh token comes from cookies |
+| Browser | `POST /api/auth/guest` | none; guest credential comes from cookies |
+| Browser | `GET /api/auth/:provider` | optional `redirectPath` query |
+| Browser | `GET` or `POST /api/auth/:provider/callback` | provider callback fields |
+| Browser | `GET /api/auth/social-signup` | staged profile from cookies |
+| Browser | `POST /api/auth/social-signup` | `{ registration }` |
+| Shared | `POST /api/auth/password-reset/request` | `{ credentialId }` |
+| Shared | `POST /api/auth/password-reset/complete` | `{ token, password, passwordConfirm }` |
+| Mobile | `POST /api/auth/mobile/password/login` | `{ id, password }` |
+| Mobile | `POST /api/auth/mobile/password/signup` | `{ id, password, passwordConfirm, registration }` |
+| Mobile | `POST /api/auth/mobile/refresh` | `{ refreshToken }` |
+| Mobile | `POST /api/auth/mobile/logout` | `{ refreshToken }` |
+| Mobile | `POST /api/auth/mobile/guest` | `{ guestCredential? }` |
+| Mobile | `POST /api/auth/mobile/:provider` | `{ idToken }`, `{ accessToken }`, or `{ authorizationCode }` |
+| Mobile | `POST /api/auth/mobile/social-signup` | `{ signupToken, registration }` |
+
+Only enabled features and providers register their routes. All JSON responses
+use `{ ok: true, value? }` or `{ ok: false, error }` and send
+`Cache-Control: no-store`.
+Browser OAuth callbacks are derived from `siteOrigin`; successful sign-in uses
+the validated `redirectPath`, while an unknown identity goes to `/signup` and
+a provider error goes to `/login`.
+
+`registration` remains application-owned, untrusted input. If it needs runtime
+validation, if paths or bodies differ, or if one provider needs different
+browser and mobile credentials, define that specific application Route Handler
+with `routeHandler` instead. A specific App Router route takes precedence over
+the catch-all route.
 
 ### Route Handler
 
@@ -506,15 +604,15 @@ import { authRequest, startOAuth, useAuth } from "gw-auth/nextjs/client";
 
 const { auth, isAuthenticated, authenticate, logout } = useAuth();
 
-const loggedIn = await authenticate("/auth/login", {
+const loggedIn = await authenticate("/api/auth/login", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ id, password }),
 });
 
-const current = await authRequest<AuthState>("/auth/current");
+const current = await authRequest<AuthState>("/api/auth/session");
 
-startOAuth("/auth/google?redirectPath=%2Fsettings");
+startOAuth("/api/auth/google?redirectPath=%2Fsettings");
 ```
 
 ## Maintenance

@@ -6,7 +6,13 @@ import {
   type PasswordRepository,
   type SocialRepository,
 } from "../src/core";
-import { getAuth, routeHandler, serverAction, withAuth } from "../src/nextjs";
+import {
+  createAuthRoute,
+  getAuth,
+  routeHandler,
+  serverAction,
+  withAuth,
+} from "../src/nextjs";
 import {
   AuthProvider,
   authRequest,
@@ -67,6 +73,18 @@ const browserGoogle = social.google({
 }).browser({ redirectUri: "https://example.test/auth/google/callback" });
 const mobileGoogle = social.google({ clientId: "google-client" }).mobile();
 const mobileOnlySocial = auth.social({ repository: socialRepository });
+const authRoute = createAuthRoute({
+  siteOrigin: "https://example.test",
+  session: auth.session,
+  password: auth.password({ repository: passwordRepository }),
+  social: {
+    signup: social.signup,
+    google: social.google({
+      clientId: "google-client",
+      clientSecret: "google-secret",
+    }),
+  },
+});
 
 void browserPassword.login({ id: "member", password: "secret" });
 void mobilePassword.signup({
@@ -95,6 +113,8 @@ const authState: AuthState<ApplicationClaims> = {
 };
 
 void authState;
+void authRoute.GET;
+void authRoute.POST;
 
 const loginRoute = routeHandler(async () => browserPassword.login({
   id: "member",

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1
+
+- Added a fixed Next.js catch-all `createAuthRoute` preset that projects one
+  session, password, guest, social, and recovery composition into browser and
+  mobile endpoints.
+- Documented that browser and mobile delivery share one `createAuth` facade and
+  that custom endpoint contracts remain application-owned direct routes.
+
 ## 0.4.0
 
 - Added the feature-first `createAuth` facade with

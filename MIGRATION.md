@@ -280,7 +280,30 @@ The legacy root React bindings, Express adapter, and route-opinionated
 Next.js App Router applications may use `gw-auth/nextjs` for Route Handlers and
 Server Actions, verified server auth, and Proxy composition. Use
 `gw-auth/nextjs/client` for `AuthProvider`, `useAuth`, and client requests. These
-adapters do not choose route paths or validate application request bodies.
+low-level adapters do not choose route paths or validate application request
+bodies.
+
+For the fixed `/api/auth/[...auth]` convention, pass unprojected features to
+`createAuthRoute` and re-export its methods:
+
+```ts
+import { createAuthRoute } from "gw-auth/nextjs";
+
+const password = auth.password({ repository: passwordRepository });
+const authRoute = createAuthRoute({
+  siteOrigin: "https://app.example.com",
+  session: auth.session,
+  password,
+});
+
+export const { GET, POST } = authRoute;
+```
+
+Create only one `auth` facade for an authentication boundary. Do not create
+separate `webAuth` and `mobileAuth` facades: the AuthRoute selects
+`password.browser()` and `password.mobile()` internally. Keep direct Route
+Handlers for any nonstandard path, request body, validation, or redirect.
+
 Other framework bindings remain in their consuming application or adapter
 package.
 

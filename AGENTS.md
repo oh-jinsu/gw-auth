@@ -14,8 +14,23 @@
   under `src/nextjs`; publish them as explicit package subpaths.
 - Co-locate each social provider's public composition, browser OAuth adapter,
   and mobile credential verifier under `src/core/social/<provider>`.
-- Keep route-specific browser clients and endpoint conventions in consuming
-  applications or separate adapter packages.
+- Create one `createAuth` facade per authentication boundary. A `serviceName`
+  identifies that boundary, not a delivery environment; never create separate
+  `webAuth` and `mobileAuth` facades for the same users and sessions.
+- Select `.browser()` and `.mobile()` from the same configured feature object.
+  The prebuilt Next.js AuthRoute accepts those unprojected feature objects and
+  owns both projections; callers must not pass `.browser()` results to it.
+  ```ts
+  const password = auth.password({ repository });
+  const authRoute = createAuthRoute({
+    siteOrigin,
+    session: auth.session,
+    password,
+  });
+  ```
+- Keep custom route-specific clients and endpoint conventions in consuming
+  applications. The optional Next.js AuthRoute may own only its documented,
+  fixed catch-all paths and bodies; customization uses direct Route Handlers.
 - Keep the Next.js Proxy adapter route-agnostic. It may refresh GET and HEAD
   requests, but mutation boundaries must authenticate and authorize themselves.
 - Expose feature-first composition such as
