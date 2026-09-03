@@ -1,5 +1,27 @@
 # Migrating gw-auth
 
+## Migrating from 0.8.0 to 0.9.0
+
+Next.js applications can bind the shared session facade once instead of
+projecting it at every server authentication call:
+
+```ts
+import { createAuthResolver } from "gw-auth/nextjs";
+
+const authResolver = createAuthResolver(auth.session);
+
+await authResolver.cookies({ refresh: false });
+await authResolver.cookies();
+await authResolver.request();
+```
+
+The existing `getAuth` and `getAuthWithRefresh` functions remain supported.
+`request()` is intended for Route Handlers: a present `Authorization` header
+must contain exactly one Bearer credential and takes precedence over cookies.
+Malformed or invalid bearer authentication never falls back to ambient browser
+cookies. Without the header, it verifies cookies and attempts browser refresh,
+including replacement or terminal cleanup cookie effects.
+
 ## Migrating from 0.7.0 to 0.8.0
 
 Next.js Server Actions and Route Handlers can now recover an expired access

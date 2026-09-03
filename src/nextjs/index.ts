@@ -15,7 +15,12 @@ export {
   type AuthRouteProvider,
   type AuthRouteSocial,
 } from "./auth_route";
-export { getAuth, getAuthWithRefresh } from "./get_auth";
+export {
+  createAuthResolver,
+  getAuth,
+  getAuthWithRefresh,
+  type AuthResolver,
+} from "./get_auth";
 export {
   serverAction,
   type NextResultServerActionOperation,

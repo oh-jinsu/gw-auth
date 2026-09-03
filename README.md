@@ -856,6 +856,35 @@ export async function requestPasswordReset(credentialId: string) {
 
 ### Server auth and Proxy
 
+Bind the shared session facade once when an application uses server auth in
+multiple places:
+
+```ts
+import { createAuthResolver } from "gw-auth/nextjs";
+
+export const authResolver = createAuthResolver(auth.session);
+```
+
+The resolver exposes three normalized `AuthResult<AuthState<TClaims>>` lookup
+modes:
+
+```ts
+await authResolver.cookies({ refresh: false });
+await authResolver.cookies();
+await authResolver.request();
+```
+
+`cookies({ refresh: false })` only verifies the access cookie and is safe during
+Server Component rendering. Refresh defaults to `true`, so `cookies()` may
+write replacement or cleanup cookies and is limited to Server Actions and
+Route Handlers. `request()` reads the current Next.js request headers for Route
+Handlers shared by browser and mobile clients. A present `Authorization` header
+must contain exactly one Bearer token, takes precedence over cookies, and never
+falls back to cookies after malformed or invalid bearer authentication. Without
+that header, `request()` uses the refresh-capable cookie path. It authenticates
+only; application Route Handlers remain responsible for authorization and
+Origin or CSRF enforcement.
+
 Use `getAuth` when a Server Component needs verified access-token state. This
 replaces decoding a cookie directly in application code.
 

@@ -27,6 +27,7 @@ test("loads the documented ESM and CommonJS entry points", () => {
   assert.deepEqual(Object.keys(esmCore).sort(), coreExports);
   assert.deepEqual(Object.keys(cjsCore).sort(), coreExports);
   assert.deepEqual(Object.keys(esmNext).sort(), [
+    "createAuthResolver",
     "createAuthRoute",
     "getAuth",
     "getAuthWithRefresh",
@@ -36,6 +37,7 @@ test("loads the documented ESM and CommonJS entry points", () => {
     "withAuth",
   ]);
   assert.deepEqual(Object.keys(cjsNext).sort(), [
+    "createAuthResolver",
     "createAuthRoute",
     "getAuth",
     "getAuthWithRefresh",

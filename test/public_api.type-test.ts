@@ -10,6 +10,7 @@ import {
   type SocialRepository,
 } from "../src/core";
 import {
+  createAuthResolver,
   createAuthRoute,
   getAuth,
   getAuthWithRefresh,
@@ -223,6 +224,12 @@ void withAuth(auth.session.browser(), async (_request, _event, currentAuth) => {
 void getAuth(auth.session.browser());
 void getAuthWithRefresh(auth.session.browser());
 
+const authResolver = createAuthResolver(auth.session);
+
+void authResolver.cookies({ refresh: false });
+void authResolver.cookies();
+void authResolver.request();
+
 /** Verifies that Next.js server auth returns normalized browser-safe state. */
 async function inspectServerAuth() {
   const current = await getAuth(auth.session.browser());
@@ -245,8 +252,20 @@ async function inspectRefreshedServerAuth() {
   }
 }
 
+/** Verifies that request auth returns one normalized state for either transport. */
+async function inspectRequestAuth() {
+  const current = await authResolver.request();
+
+  if (current.isOk) {
+    current.value.permissions;
+    // @ts-expect-error JWT-managed claims are absent from normalized request auth state.
+    current.value.nbf;
+  }
+}
+
 void inspectServerAuth;
 void inspectRefreshedServerAuth;
+void inspectRequestAuth;
 void AuthProvider<ApplicationClaims>;
 void useAuth<ApplicationClaims>;
 void startOAuth;

@@ -7,10 +7,33 @@ import { NextRequest, NextResponse } from "next/server.js";
 import { AuthError } from "../dist/core/index.mjs";
 import { authRequest, startOAuth } from "../dist/nextjs/client/index.mjs";
 import {
+  createAuthResolver,
   nextRequestCookies,
   routeHandler,
   withAuth,
 } from "../dist/nextjs/server/index.mjs";
+
+test("binds browser and mobile session projections once", () => {
+  const counts = { browser: 0, mobile: 0 };
+  const session = {
+    browser: () => {
+      counts.browser += 1;
+
+      return proxySession();
+    },
+    mobile: () => {
+      counts.mobile += 1;
+
+      return { verify: async () => ok({}) };
+    },
+  };
+
+  const resolver = createAuthResolver(session);
+
+  assert.equal(typeof resolver.cookies, "function");
+  assert.equal(typeof resolver.request, "function");
+  assert.deepEqual(counts, { browser: 1, mobile: 1 });
+});
 
 test("applies route cookies and prevents caching", async () => {
   const handler = routeHandler(async () => ({

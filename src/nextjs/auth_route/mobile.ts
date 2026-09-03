@@ -8,13 +8,14 @@ import type {
 } from "gw-auth/core";
 import type { NextRequest } from "next/server.js";
 
+import { bearerToken } from "../bearer_token";
 import {
   accessTokenRequired,
   authResultResponse,
   invalidAuthRequest,
   mapAuthResult,
 } from "./response";
-import { bearerToken, optionalString, readJsonObject, requiredString } from "./request";
+import { optionalString, readJsonObject, requiredString } from "./request";
 import { mobileSocialRoutes } from "./mobile_social";
 import type {
   AuthRouteDefinition,
@@ -51,7 +52,7 @@ export function mobileAuthRoutes<
 /** Creates account deletion from the standard bearer access-token header. */
 function mobileAccountDeletionRoute(account: MobileAccountAuth): AuthRouteDefinition {
   return route("POST", "mobile/account/delete", async (request) => {
-    const accessToken = bearerToken(request);
+    const accessToken = bearerToken(request.headers.get("Authorization"));
 
     return accessToken
       ? authResultResponse(request, () => account.delete({ accessToken }))

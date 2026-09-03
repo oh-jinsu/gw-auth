@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0 - 2026-09-03
+
+- Added `createAuthResolver` with configurable `cookies()` and mixed-transport
+  `request()` lookups bound to one shared session facade.
+- Made request authentication prefer an exact Bearer header without cookie
+  fallback and normalize both transports to the same `AuthState` contract.
+
 ## 0.8.0 - 2026-09-03
 
 - Added `getAuthWithRefresh` for access verification, refresh-session rotation,

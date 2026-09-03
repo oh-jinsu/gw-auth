@@ -38,7 +38,7 @@ after(async () => {
 });
 
 test("returns verified auth without replacing cookies", async () => {
-  const response = await fetch(`${origin}/api/auth`, {
+  const response = await fetch(`${origin}/api/auth?source=cookies`, {
     headers: { cookie: "service_access=valid-access" },
   });
 
@@ -51,7 +51,7 @@ test("returns verified auth without replacing cookies", async () => {
 });
 
 test("refreshes invalid access and applies replacement cookies", async () => {
-  const response = await fetch(`${origin}/api/auth`, {
+  const response = await fetch(`${origin}/api/auth?source=cookies-refresh`, {
     headers: { cookie: "service_access=expired-access; service_refresh=valid-refresh" },
   });
   const setCookies = response.headers.getSetCookie().join("\n");
@@ -62,6 +62,54 @@ test("refreshes invalid access and applies replacement cookies", async () => {
   assert.deepEqual(await response.json(), {
     ok: true,
     value: { userId: "user-1", sessionId: "session-1", role: "admin" },
+  });
+});
+
+test("resolves bearer auth before cookies and removes JWT metadata", async () => {
+  const response = await fetch(`${origin}/api/auth`, {
+    headers: {
+      authorization: "bEaReR valid-bearer",
+      cookie: "service_access=valid-access; service_refresh=valid-refresh",
+    },
+  });
+
+  assert.equal(response.status, 200, serverOutput);
+  assert.equal(response.headers.has("Set-Cookie"), false);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    value: { userId: "mobile-user", sessionId: "mobile-session", role: "member" },
+  });
+});
+
+test("rejects malformed Authorization without falling back to valid cookies", async () => {
+  const response = await fetch(`${origin}/api/auth`, {
+    headers: {
+      authorization: "Bearer  valid-bearer",
+      cookie: "service_access=valid-access; service_refresh=valid-refresh",
+    },
+  });
+
+  assert.equal(response.status, 401, serverOutput);
+  assert.equal(response.headers.has("Set-Cookie"), false);
+  assert.deepEqual(await response.json(), {
+    ok: false,
+    error: { code: "ACCESS_TOKEN_REQUIRED" },
+  });
+});
+
+test("rejects an invalid bearer token without falling back to valid cookies", async () => {
+  const response = await fetch(`${origin}/api/auth`, {
+    headers: {
+      authorization: "Bearer invalid-bearer",
+      cookie: "service_access=valid-access; service_refresh=valid-refresh",
+    },
+  });
+
+  assert.equal(response.status, 401, serverOutput);
+  assert.equal(response.headers.has("Set-Cookie"), false);
+  assert.deepEqual(await response.json(), {
+    ok: false,
+    error: { code: "INVALID_ACCESS_TOKEN" },
   });
 });
 

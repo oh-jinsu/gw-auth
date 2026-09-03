@@ -3,6 +3,7 @@ import { err, ok } from "gw-result";
 import { AuthError } from "../../../../dist/core/index.mjs";
 
 const authState = { userId: "user-1", sessionId: "session-1", role: "admin" };
+const mobileAuthState = { userId: "mobile-user", sessionId: "mobile-session", role: "member" };
 
 export const session = {
   verify: async ({ cookies }) => {
@@ -16,6 +17,17 @@ export const session = {
       : invalidSession();
   },
   logout: async () => ({ result: ok(), cookies: [] }),
+};
+
+/** Shared browser and mobile session facade used by the resolver fixture. */
+export const sessionAuth = {
+  browser: () => session,
+  mobile: () => ({
+    verify: async ({ accessToken }) => accessToken === "valid-bearer"
+      ? ok({ ...mobileAuthState, tokenUse: "access", exp: 2_000_000_000 })
+      : err(new AuthError("INVALID_ACCESS_TOKEN", "invalid")),
+  }),
+  deleteExpired: async () => ok(0),
 };
 
 /** Returns replacement session cookies for a successful refresh. */
