@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0 - 2026-09-03
+
+- Added `getAuthWithRefresh` for access verification, refresh-session rotation,
+  and cookie application inside Next.js Server Actions and Route Handlers.
+- Reused the Server Action cookie adapter for successful replacement cookies
+  and terminal refresh cleanup without changing Proxy or mobile behavior.
+
 ## 0.7.0 - 2026-09-03
 
 - Added authenticated browser and mobile account deletion with resumable,

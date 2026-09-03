@@ -29,6 +29,7 @@ test("loads the documented ESM and CommonJS entry points", () => {
   assert.deepEqual(Object.keys(esmNext).sort(), [
     "createAuthRoute",
     "getAuth",
+    "getAuthWithRefresh",
     "nextRequestCookies",
     "routeHandler",
     "serverAction",
@@ -37,6 +38,7 @@ test("loads the documented ESM and CommonJS entry points", () => {
   assert.deepEqual(Object.keys(cjsNext).sort(), [
     "createAuthRoute",
     "getAuth",
+    "getAuthWithRefresh",
     "nextRequestCookies",
     "routeHandler",
     "serverAction",

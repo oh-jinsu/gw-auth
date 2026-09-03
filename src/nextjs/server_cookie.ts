@@ -1,6 +1,7 @@
 import { cookies } from "next/headers.js";
 
-import type { BrowserCookieValues } from "gw-auth/core";
+import type { BrowserCookieMutation, BrowserCookieValues } from "gw-auth/core";
+import { deleteCookieOptions, setCookieOptions } from "./cookie";
 
 /** Mutable cookie store available in a Next.js Server Function. */
 export type NextServerCookieStore = Awaited<ReturnType<typeof cookies>>;
@@ -17,4 +18,18 @@ export function serverCookieValues(
   return Object.fromEntries(
     store.getAll().map(({ name, value }) => [name, value]),
   );
+}
+
+/** Applies cookie instructions in a mutable Server Action or Route Handler context. */
+export function applyServerCookies(
+  store: NextServerCookieStore,
+  mutations: readonly BrowserCookieMutation[],
+) {
+  for (const mutation of mutations) {
+    if (mutation.operation === "set") {
+      store.set(mutation.name, mutation.value, setCookieOptions(mutation));
+    } else {
+      store.set(mutation.name, "", deleteCookieOptions(mutation));
+    }
+  }
 }

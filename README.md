@@ -32,6 +32,7 @@ import {
 import {
   createAuthRoute,
   getAuth,
+  getAuthWithRefresh,
   routeHandler,
   serverAction,
   withAuth,
@@ -870,6 +871,44 @@ export default async function Layout({ children }: { children: React.ReactNode }
       {children}
     </AuthProvider>
   );
+}
+```
+
+Use `getAuthWithRefresh` at the start of a Server Action or Route Handler that
+can write response cookies. It verifies the access cookie first, rotates the
+refresh session only when verification fails, applies replacement or terminal
+cleanup cookies, and returns normalized `AuthState`. Do not call it while
+rendering a Server Component because rendering cannot write cookies.
+
+```ts
+"use server";
+
+import { getAuthWithRefresh } from "gw-auth/nextjs";
+
+export async function updateProfile(formData: FormData) {
+  const current = await getAuthWithRefresh(auth.session.browser());
+
+  if (current.isErr) {
+    return unauthorizedResult();
+  }
+
+  return updateUser(current.value.userId, formData);
+}
+```
+
+Route Handlers use the same helper before executing protected application
+logic. Next.js attaches cookie writes made through `cookies()` to the returned
+response.
+
+```ts
+export async function POST(request: Request) {
+  const current = await getAuthWithRefresh(auth.session.browser());
+
+  if (current.isErr) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  return updateResource(request, current.value.userId);
 }
 ```
 

@@ -1,5 +1,25 @@
 # Migrating gw-auth
 
+## Migrating from 0.7.0 to 0.8.0
+
+Next.js Server Actions and Route Handlers can now recover an expired access
+cookie before running protected application logic:
+
+```ts
+import { getAuthWithRefresh } from "gw-auth/nextjs";
+
+const current = await getAuthWithRefresh(auth.session.browser());
+```
+
+The helper verifies first and refreshes only when access verification fails. It
+applies replacement cookies after a successful rotation and applies core-owned
+cleanup cookies after a terminal refresh failure. Use the existing `getAuth`
+inside Server Components because render-time code cannot write cookies.
+
+Proxy behavior is unchanged: `withAuth` performs redirect-based refresh only
+for GET and HEAD requests. Mutations must call `getAuthWithRefresh` inside their
+own Server Action or Route Handler before executing application logic.
+
 ## Migrating from 0.6.0 to 0.7.0
 
 Account deletion is now an optional feature configured from an

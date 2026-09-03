@@ -12,6 +12,7 @@ import {
 import {
   createAuthRoute,
   getAuth,
+  getAuthWithRefresh,
   routeHandler,
   serverAction,
   withAuth,
@@ -220,6 +221,7 @@ void withAuth(auth.session.browser(), async (_request, _event, currentAuth) => {
   return Response.json({ authenticated: currentAuth !== undefined });
 });
 void getAuth(auth.session.browser());
+void getAuthWithRefresh(auth.session.browser());
 
 /** Verifies that Next.js server auth returns normalized browser-safe state. */
 async function inspectServerAuth() {
@@ -232,7 +234,19 @@ async function inspectServerAuth() {
   }
 }
 
+/** Verifies that mutable request auth returns normalized browser-safe state. */
+async function inspectRefreshedServerAuth() {
+  const current = await getAuthWithRefresh(auth.session.browser());
+
+  if (current.isOk) {
+    current.value.permissions;
+    // @ts-expect-error JWT-managed claims are absent from normalized refreshed auth state.
+    current.value.nbf;
+  }
+}
+
 void inspectServerAuth;
+void inspectRefreshedServerAuth;
 void AuthProvider<ApplicationClaims>;
 void useAuth<ApplicationClaims>;
 void startOAuth;
