@@ -100,6 +100,40 @@ test("returns only normalized AuthState from the browser session route", async (
   });
 });
 
+test("serves browser and bearer-authenticated mobile account deletion", async () => {
+  const captured = {};
+  const handlers = createAuthRoute({
+    siteOrigin: "https://example.test",
+    session: sessionFeature(),
+    account: accountFeature(captured),
+  });
+  const browser = await handlers.POST(
+    new NextRequest("https://example.test/api/auth/account/delete", {
+      method: "POST",
+      headers: { cookie: "access=browser-access" },
+    }),
+    routeContext("account", "delete"),
+  );
+  const mobile = await handlers.POST(
+    new NextRequest("https://example.test/api/auth/mobile/account/delete", {
+      method: "POST",
+      headers: { Authorization: "Bearer mobile-access" },
+    }),
+    routeContext("mobile", "account", "delete"),
+  );
+  const missingBearer = await handlers.POST(
+    new NextRequest("https://example.test/api/auth/mobile/account/delete", { method: "POST" }),
+    routeContext("mobile", "account", "delete"),
+  );
+
+  assert.deepEqual(captured.browserCookies, { access: "browser-access" });
+  assert.equal(captured.mobileAccessToken, "mobile-access");
+  assert.equal(browser.status, 200);
+  assert.equal(mobile.status, 200);
+  assert.equal(missingBearer.status, 401);
+  assert.equal((await missingBearer.json()).error.code, "ACCESS_TOKEN_REQUIRED");
+});
+
 test("accepts only exact trusted callback origins", () => {
   assert.doesNotThrow(() => createAuthRoute({
     siteOrigin: "http://localhost:3000",
@@ -211,6 +245,27 @@ function sessionFeature() {
       refresh: async () => ok(mobileSession()),
       logout: async () => ok(),
     }),
+  };
+}
+
+/** Creates account deletion and records both transport inputs. */
+function accountFeature(captured) {
+  return {
+    browser: () => ({
+      delete: async ({ cookies }) => {
+        captured.browserCookies = cookies;
+
+        return browserOperation();
+      },
+    }),
+    mobile: () => ({
+      delete: async ({ accessToken }) => {
+        captured.mobileAccessToken = accessToken;
+
+        return ok();
+      },
+    }),
+    retryPending: async () => ok(),
   };
 }
 

@@ -2,7 +2,7 @@
 
 `gw-auth/core` centralizes authentication and its security invariants without
 knowing which application framework consumes it. It supports password, social,
-guest, password-recovery, and rotating-session flows.
+guest, password-recovery, rotating-session, and resumable account-deletion flows.
 
 `gw-auth/nextjs` converts those plain operations to App Router Route Handlers
 and Server Actions. `gw-auth/nextjs/client` provides the matching client-side
@@ -20,6 +20,7 @@ Node.js 20 or newer is required.
 
 ```ts
 import {
+  type AccountDeletionRepository,
   authErrorCategory,
   authStateFromAccessPayload,
   createAuth,
@@ -43,6 +44,7 @@ import {
 } from "gw-auth/nextjs/client";
 
 import {
+  assertAccountDeletionRepositoryConformance,
   assertOAuthTransactionRepositoryConformance,
   assertPasswordResetRepositoryConformance,
   assertSessionRepositoryConformance,
@@ -342,7 +344,7 @@ verified `SocialIdentity`, then use both values during account deletion:
 
 ```ts
 await apple.revoke({
-  providerRefreshToken: storedEncryptedToken,
+  providerRefreshToken: decryptedStoredToken,
   providerClientId: storedIssuingClientId,
 });
 ```
@@ -513,6 +515,50 @@ if (verified.isOk) {
 }
 ```
 
+## Account deletion
+
+Configure account deletion once, reusing the already configured Apple feature
+when Apple identities may be linked:
+
+```ts
+const account = auth.account({
+  repository: accountDeletionRepository,
+  providers: { apple },
+});
+
+await account.browser().delete({ cookies: parsedCookies });
+await account.mobile().delete({ accessToken });
+```
+
+Neither operation accepts a `userId`; core derives it only from a verified
+access token. A successful browser deletion returns access- and refresh-cookie
+deletions. Mobile deletion returns no replacement tokens.
+
+`AccountDeletionRepository.beginAccountDeletion` must atomically mark the user
+as deletion-pending and revoke all local refresh sessions. Password, social,
+guest, and session repositories must refuse pending users and prevent a new
+session from racing with that transition. It returns only unfinished provider
+revocations, with Apple refresh tokens decrypted for this in-process call. The
+tokens must remain encrypted at rest.
+
+Core calls the configured `apple.revoke` with each stored issuing client ID,
+records each successful revocation through
+`completeAccountProviderRevocation`, and calls `completeAccountDeletion` only
+when none remain. Provider failure returns
+`ACCOUNT_PROVIDER_REVOCATION_FAILED` and preserves the pending deletion. A
+trusted server maintenance job can resume it without an end-user token:
+
+```ts
+await account.retryPending(pendingUserId);
+```
+
+`completeAccountDeletion` owns the application's hard deletion, soft deletion,
+or anonymization policy, but it must remove every authentication credential and
+reject completion while provider work remains. Access tokens are stateless and
+remain cryptographically valid until expiry; authorization requiring immediate
+revocation must also consult current application user state and reject pending
+or deleted users.
+
 ## Guest authentication
 
 ```ts
@@ -601,10 +647,15 @@ const apple = social.apple({
   teamId: process.env.APPLE_TEAM_ID!,
   keyId: process.env.APPLE_KEY_ID!,
 });
+const account = auth.account({
+  repository: accountDeletionRepository,
+  providers: { apple },
+});
 
 export const authRoute = createAuthRoute({
   siteOrigin: "https://app.example.com",
   session: auth.session,
+  account,
   password,
   social: {
     signup: social.signup,
@@ -652,6 +703,7 @@ The preset owns these contracts:
 | Browser | `POST /api/auth/signup` | `{ id, password, passwordConfirm, registration }` |
 | Browser | `POST /api/auth/refresh` | none; refresh token comes from cookies |
 | Browser | `POST /api/auth/logout` | none; refresh token comes from cookies |
+| Browser | `POST /api/auth/account/delete` | none; access token comes from cookies |
 | Browser | `POST /api/auth/guest` | none; guest credential comes from cookies |
 | Browser | `GET /api/auth/:provider` | optional `redirectPath` query |
 | Browser | `GET` or `POST /api/auth/:provider/callback` | provider callback fields |
@@ -663,6 +715,7 @@ The preset owns these contracts:
 | Mobile | `POST /api/auth/mobile/password/signup` | `{ id, password, passwordConfirm, registration }` |
 | Mobile | `POST /api/auth/mobile/refresh` | `{ refreshToken }` |
 | Mobile | `POST /api/auth/mobile/logout` | `{ refreshToken }` |
+| Mobile | `POST /api/auth/mobile/account/delete` | `Authorization: Bearer <accessToken>` |
 | Mobile | `POST /api/auth/mobile/guest` | `{ guestCredential? }` |
 | Mobile | `POST /api/auth/mobile/:provider` | Google `{ idToken }`; Kakao or Naver `{ accessToken }` |
 | iOS | `POST /api/auth/mobile/apple/native` | `{ authorizationCode }` |
@@ -887,6 +940,7 @@ calls:
 ```ts
 import test from "node:test";
 import {
+  assertAccountDeletionRepositoryConformance,
   assertOAuthTransactionRepositoryConformance,
   assertPasswordResetRepositoryConformance,
   assertSessionRepositoryConformance,
@@ -905,6 +959,9 @@ test("social repository", () =>
 
 test("password-reset repository", () =>
   assertPasswordResetRepositoryConformance(createIsolatedPasswordResetFixture));
+
+test("account-deletion repository", () =>
+  assertAccountDeletionRepositoryConformance(createIsolatedAccountDeletionFixture));
 ```
 
 Every factory must return a fresh repository namespace and may return a
@@ -914,6 +971,10 @@ tokens for the same provider identity. The password-reset fixture seeds one
 account, its active refresh sessions, and at least one unrelated user's active
 session. It exposes password-hash, target-session, and unrelated-session
 readers so the assertion can verify atomic completion without over-revocation.
+The account-deletion fixture seeds one active account with sessions and at
+least one Apple revocation. Its state reader lets the assertion verify atomic
+pending state, session revocation, idempotent provider completion, and final
+deletion ordering.
 This entry point is intended for Node.js test environments only.
 
 ## Application boundary requirements

@@ -55,6 +55,7 @@ test("loads the documented ESM and CommonJS entry points", () => {
     "useAuth",
   ]);
   assert.deepEqual(Object.keys(esmTesting).sort(), [
+    "assertAccountDeletionRepositoryConformance",
     "assertOAuthTransactionRepositoryConformance",
     "assertPasswordResetRepositoryConformance",
     "assertSessionRepositoryConformance",

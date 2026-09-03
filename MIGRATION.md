@@ -1,5 +1,29 @@
 # Migrating gw-auth
 
+## Migrating from 0.6.0 to 0.7.0
+
+Account deletion is now an optional feature configured from an
+`AccountDeletionRepository` and any linked provider revokers:
+
+```ts
+const account = auth.account({
+  repository: accountDeletionRepository,
+  providers: { apple },
+});
+```
+
+Implement `beginAccountDeletion` as an idempotent transaction that marks the
+user pending, prevents new authentication, and revokes all refresh sessions.
+Return unfinished Apple revocations with their stored issuing client IDs and
+decrypted refresh tokens. `completeAccountProviderRevocation` must be
+idempotent, and `completeAccountDeletion` must reject remaining provider work.
+
+The Next.js preset accepts this feature as `account` and adds
+`POST /api/auth/account/delete` for cookie-backed browsers and
+`POST /api/auth/mobile/account/delete` for mobile clients using an
+`Authorization: Bearer <accessToken>` header. Custom routes can use the same
+browser and mobile operations through `routeHandler`.
+
 ## Migrating from 0.5.0 to 0.6.0
 
 Direct Flutter Android Apple composition now supplies its package identifier

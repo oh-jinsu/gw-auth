@@ -3,6 +3,11 @@ export type {
   RepositoryConformanceFixture,
 } from "./fixture";
 export {
+  assertAccountDeletionRepositoryConformance,
+  type AccountDeletionRepositoryConformanceFixture,
+  type AccountDeletionRepositoryState,
+} from "./account_deletion_repository";
+export {
   assertOAuthTransactionRepositoryConformance,
   type OAuthTransactionRepositoryConformanceFixture,
 } from "./oauth_transaction_repository";

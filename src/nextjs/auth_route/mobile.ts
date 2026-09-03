@@ -3,16 +3,18 @@ import type {
   GuestAuth,
   MobileGuestAuthentication,
   MobilePasswordAuth,
+  MobileAccountAuth,
   MobileSessionAuth,
 } from "gw-auth/core";
 import type { NextRequest } from "next/server.js";
 
 import {
+  accessTokenRequired,
   authResultResponse,
   invalidAuthRequest,
   mapAuthResult,
 } from "./response";
-import { optionalString, readJsonObject, requiredString } from "./request";
+import { bearerToken, optionalString, readJsonObject, requiredString } from "./request";
 import { mobileSocialRoutes } from "./mobile_social";
 import type {
   AuthRouteDefinition,
@@ -31,6 +33,10 @@ export function mobileAuthRoutes<
     routes.push(...mobilePasswordRoutes(options.password.mobile()));
   }
 
+  if (options.account) {
+    routes.push(mobileAccountDeletionRoute(options.account.mobile()));
+  }
+
   if (options.guest) {
     routes.push(mobileGuestRoute(options.guest.mobile()));
   }
@@ -40,6 +46,17 @@ export function mobileAuthRoutes<
   }
 
   return routes;
+}
+
+/** Creates account deletion from the standard bearer access-token header. */
+function mobileAccountDeletionRoute(account: MobileAccountAuth): AuthRouteDefinition {
+  return route("POST", "mobile/account/delete", async (request) => {
+    const accessToken = bearerToken(request);
+
+    return accessToken
+      ? authResultResponse(request, () => account.delete({ accessToken }))
+      : accessTokenRequired();
+  });
 }
 
 /** Creates fixed mobile refresh and logout routes. */

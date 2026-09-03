@@ -32,6 +32,7 @@ const systemErrorCodes = new Set([
 ]);
 
 const upstreamErrorCodes = new Set([
+  "ACCOUNT_PROVIDER_REVOCATION_FAILED",
   "INVALID_PROVIDER_RESPONSE",
   "PROVIDER_UNAVAILABLE",
 ]);

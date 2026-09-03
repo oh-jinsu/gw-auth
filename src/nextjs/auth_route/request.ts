@@ -1,6 +1,14 @@
 import { resultFrom } from "gw-result";
 import type { NextRequest } from "next/server.js";
 
+/** Reads exactly one RFC bearer credential without accepting surrounding whitespace. */
+export function bearerToken(request: NextRequest) {
+  const authorization = request.headers.get("Authorization");
+  const matched = authorization?.match(/^Bearer ([^\s]+)$/i);
+
+  return matched?.[1];
+}
+
 /** Reads a JSON object without allowing parser failures to escape the adapter. */
 export async function readJsonObject(request: NextRequest) {
   if (!hasJsonContentType(request)) {

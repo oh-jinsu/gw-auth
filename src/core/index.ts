@@ -1,4 +1,9 @@
 export * from "./api";
+export type {
+  AccountDeletionRepository,
+  PendingAccountDeletion,
+  PendingAppleRevocation,
+} from "./account/account_deletion_repository";
 export {
   AuthError,
   authErrorCategory,

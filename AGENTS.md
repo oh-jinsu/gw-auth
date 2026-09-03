@@ -71,6 +71,19 @@
 - Keep error semantics framework-neutral in core. HTTP adapters map the core
   category to a status and may offer application overrides.
 - Keep repositories as explicit ports. Operations that create an account and attach credentials or social identities must be atomic repository operations.
+- Authenticate account deletion from a verified access token and never accept
+  a caller-supplied user ID at an HTTP boundary. `auth.account(...)` owns
+  browser/mobile projection and provider-revocation orchestration.
+- Account deletion repositories must atomically mark deletion pending, prevent
+  new authentication, and revoke all refresh sessions before returning
+  encrypted-at-rest provider credentials decrypted for revocation. Record each
+  successful provider revocation idempotently and reject final local deletion
+  while any revocation remains pending.
+- Reuse the configured base Apple feature in account deletion. Core selects the
+  stored issuing client ID and calls Apple revoke; consumers own persistence,
+  encryption, and hard-delete, soft-delete, or anonymization policy. Preserve a
+  pending deletion on provider failure and resume it through the server-only
+  retry operation.
 - Keep provider credential verification separate from local account creation and session issuance.
 - Use server-side, hashed, single-use attempts for OAuth transactions, social signup, and password reset.
 - Use random internal user identifiers. Never derive a user identifier from an email address, device identifier, or provider identifier.
@@ -112,6 +125,9 @@
 - Encrypt recoverable provider refresh tokens at rest.
 - Persist Apple's issuing client ID beside its encrypted provider refresh token
   and revoke through the base Apple feature using both stored values.
+- Treat access JWTs as valid until expiry unless application authorization also
+  checks current user state; pending and deleted accounts must be rejected by
+  that state lookup.
 - Bound bundled provider HTTP and remote-key calls with timeouts. Distinguish
   invalid credentials from transport, throttling, upstream, and malformed-response failures.
 - Keep rate limiting at the consuming HTTP boundary; require it for every

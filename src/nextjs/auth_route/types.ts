@@ -1,4 +1,5 @@
 import type {
+  AccountAuth,
   AppleSocialAuth,
   GoogleMobileOptions,
   GoogleSocialAuth,
@@ -75,6 +76,9 @@ export type AuthRouteOptions<
 
   /** Shared session feature before browser or mobile projection. */
   session: SessionAuth<TClaims>;
+
+  /** Optional account deletion shared by browser and mobile transports. */
+  account?: AccountAuth;
 
   /** Optional password feature before browser or mobile projection. */
   password?: PasswordAuth<TPasswordRegistration, TClaims>;

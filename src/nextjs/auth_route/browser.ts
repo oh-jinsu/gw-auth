@@ -1,5 +1,6 @@
 import {
   authStateFromAccessPayload,
+  type BrowserAccountAuth,
   type BrowserPasswordAuth,
   type BrowserSessionAuth,
   type GuestAuth,
@@ -27,6 +28,10 @@ export function browserAuthRoutes<
 
   if (options.password) {
     routes.push(...passwordRoutes(options.password.browser()));
+  }
+
+  if (options.account) {
+    routes.push(accountDeletionRoute(options.account.browser()));
   }
 
   if (options.guest) {
@@ -61,6 +66,14 @@ function sessionRoutes<TClaims extends Record<string, unknown>>(
       () => session.logout({ cookies: nextRequestCookies(request) }),
     )),
   ];
+}
+
+/** Creates account deletion for the user represented by browser cookies. */
+function accountDeletionRoute(account: BrowserAccountAuth): AuthRouteDefinition {
+  return route("POST", "account/delete", (request) => browserOperationResponse(
+    request,
+    () => account.delete({ cookies: nextRequestCookies(request) }),
+  ));
 }
 
 /** Creates fixed browser password login and signup routes. */

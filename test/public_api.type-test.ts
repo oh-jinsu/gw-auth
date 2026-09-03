@@ -2,6 +2,7 @@ import {
   authErrorCategory,
   authStateFromAccessPayload,
   createAuth,
+  type AccountDeletionRepository,
   type AuthState,
   type AuthSessionRepository,
   type OAuthTransactionRepository,
@@ -23,6 +24,7 @@ import {
 } from "../src/nextjs/client";
 import {
   assertOAuthTransactionRepositoryConformance,
+  assertAccountDeletionRepositoryConformance,
   assertPasswordResetRepositoryConformance,
   assertSessionRepositoryConformance,
   assertSocialRepositoryConformance,
@@ -45,6 +47,7 @@ type SocialRegistration = {
 };
 
 declare const sessions: AuthSessionRepository<ApplicationClaims>;
+declare const accountDeletionRepository: AccountDeletionRepository;
 declare const passwordRepository: PasswordRepository<PasswordRegistration, ApplicationClaims>;
 declare const socialRepository: SocialRepository<SocialRegistration, ApplicationClaims>;
 declare const oauthTransactions: OAuthTransactionRepository;
@@ -89,6 +92,10 @@ const appleOptions = {
 const apple = social.apple({
   ...appleOptions,
 });
+const account = auth.account({
+  repository: accountDeletionRepository,
+  providers: { apple },
+});
 const browserApple = apple.browser({
   serviceId: "apple-service",
   redirectUri: "https://example.test/auth/apple/callback",
@@ -113,6 +120,7 @@ const mobileOnlySocial = auth.social({ repository: socialRepository });
 const authRoute = createAuthRoute({
   siteOrigin: "https://example.test",
   session: auth.session,
+  account,
   password: auth.password({ repository: passwordRepository }),
   social: {
     signup: social.signup,
@@ -159,6 +167,9 @@ void apple.revoke({
   providerClientId: "com.example.app",
   providerRefreshToken: "apple-refresh-token",
 });
+void account.browser().delete({ cookies: { "type-test_access_token": "access-token" } });
+void account.mobile().delete({ accessToken: "access-token" });
+void account.retryPending("pending-user-id");
 // @ts-expect-error Revocation must use the base Apple feature with its stored client ID.
 iosApple.revoke({ providerRefreshToken: "apple-refresh-token" });
 void mobileOnlySocial.kakao().mobile().login({ accessToken: "kakao-access-token" });
@@ -226,6 +237,7 @@ void AuthProvider<ApplicationClaims>;
 void useAuth<ApplicationClaims>;
 void startOAuth;
 void assertSessionRepositoryConformance;
+void assertAccountDeletionRepositoryConformance;
 void assertOAuthTransactionRepositoryConformance;
 void assertSocialRepositoryConformance;
 void assertPasswordResetRepositoryConformance;

@@ -1,6 +1,15 @@
 export { createAuth } from "./create_auth";
 
 export type {
+  AccountAuth,
+  AccountAuthOptions,
+  BrowserAccountAuth,
+  MobileAccountAuth,
+} from "../account/account";
+export type {
+  AccountDeletionProviders,
+} from "../account/account_deletion_service";
+export type {
   AppleBrowserApi,
   AppleBrowserOptions,
   AppleNativeApi,

@@ -1,5 +1,10 @@
 import type { JWTPayload } from "jose";
 
+import {
+  createAccountAuth,
+  type AccountAuth,
+  type AccountAuthOptions,
+} from "../account/account";
 import type {
   SessionAccessPayload,
   SessionRefreshPayload,
@@ -59,6 +64,9 @@ export type CreateAuthOptions<
 
 /** Public composition facade exposing feature-first, environment-second APIs. */
 export type Auth<TClaims extends Record<string, unknown>> = {
+  /** Enables resumable account deletion with application-owned persistence. */
+  account(options: AccountAuthOptions): AccountAuth;
+
   /** Enables password authentication with its feature-specific repository. */
   password<TRegistrationInput>(options: {
     repository: PasswordRepository<TRegistrationInput, TClaims>;
@@ -88,6 +96,7 @@ export function createAuth<
   const context = createContext(options);
 
   return {
+    account: (feature) => createAccountAuth(context, feature),
     password: (feature) => createPasswordAuth(context, feature.repository),
     social: (feature) => createSocialAuth(context, feature),
     guest: (feature) => createGuestAuth(context, feature.repository),

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 - 2026-09-03
+
+- Added authenticated browser and mobile account deletion with resumable,
+  repository-backed pending state and core-owned Apple token revocation.
+- Added fixed Next.js account-deletion routes and a repository conformance
+  assertion for session revocation, provider ordering, and idempotent cleanup.
+
 ## 0.6.0 - 2026-09-03
 
 - Moved terminal browser-refresh cleanup into core cookie effects so every

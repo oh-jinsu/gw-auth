@@ -34,6 +34,11 @@ export function invalidAuthRequest(message = "인증 요청 형식이 유효하�
   return authRouteError("INVALID_AUTH_REQUEST", message, 400);
 }
 
+/** Returns a stable authentication failure when a bearer access token is absent. */
+export function accessTokenRequired() {
+  return authRouteError("ACCESS_TOKEN_REQUIRED", "액세스 토큰이 필요합니다.", 401);
+}
+
 /** Rejects a browser request carrying an untrusted explicit Origin header. */
 export function authOriginForbidden() {
   return authRouteError("AUTH_ORIGIN_FORBIDDEN", "허용되지 않은 요청 출처입니다.", 403);
