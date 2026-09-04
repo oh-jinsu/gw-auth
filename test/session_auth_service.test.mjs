@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import bcryptjs from "bcryptjs";
+import { decodeJwt } from "jose";
 
 import { createAuth } from "../dist/core/index.mjs";
 
@@ -15,11 +16,35 @@ test("keeps sessions independent and revokes a family after replay", async () =>
 
   assert.equal(sessions.records.size, 2);
   assert.equal(rotated.isOk, true);
+
+  for (const [id, session] of sessions.records) {
+    if (session.previousTokenHash) {
+      sessions.records.set(id, { ...session, rotatedAt: new Date(Date.now() - 20_000) });
+    }
+  }
+
   assert.equal((await mobile.refresh({
     refreshToken: first.value.refreshToken,
   })).error.code, "REFRESH_TOKEN_REUSED");
   assert.equal((await mobile.refresh({ refreshToken: rotated.value.refreshToken })).isErr, true);
   assert.equal((await mobile.refresh({ refreshToken: second.value.refreshToken })).isOk, true);
+});
+
+test("returns one persisted refresh token to requests racing within ten seconds", async () => {
+  const { auth, password, sessions } = await fixture();
+  const login = await auth.password({ repository: password }).mobile().login({
+    id: "member",
+    password: "secret",
+  });
+  const mobile = auth.session.mobile();
+  const results = await Promise.all(Array.from({ length: 10 }, () => mobile.refresh({
+    refreshToken: login.value.refreshToken,
+  })));
+
+  assert.equal(results.every(({ isOk }) => isOk), true);
+  assert.equal(new Set(results.map(({ value }) => value.refreshToken)).size, 1);
+  assert.equal(sessions.records.size, 1);
+  assert.equal((await mobile.refresh({ refreshToken: results[0].value.refreshToken })).isOk, true);
 });
 
 test("revokes only the session represented by a refresh token", async () => {
@@ -105,11 +130,14 @@ test("removes JWT-managed claims supplied by the application", async () => {
   const verified = await auth.session.mobile().verify({
     accessToken: login.value.accessToken,
   });
+  const refreshClaims = decodeJwt(login.value.refreshToken);
 
   assert.equal(login.isOk, true);
   assert.equal(verified.isOk, true);
   assert.equal(login.value.auth.role, "user");
   assert.equal("nbf" in login.value.auth, false);
+  assert.equal("role" in refreshClaims, false);
+  assert.equal("name" in refreshClaims, false);
   assert.notEqual(login.value.auth.userId, "attacker");
   assert.notEqual(login.value.auth.sessionId, "attacker");
 });
@@ -208,17 +236,34 @@ class SessionStore {
     return this.records.get(id);
   }
 
-  /** Rotates one current hash with compare-and-swap. */
-  async rotateRefreshSession(id, expected, next, expiresAt) {
-    const current = this.records.get(id);
+  /** Atomically rotates, accepts immediate overlap, or revokes stale reuse. */
+  async rotateRefreshSession(input) {
+    const current = this.records.get(input.sessionId);
 
-    if (!current || current.tokenHash !== expected) {
-      return false;
+    if (!current || current.userId !== input.userId || current.expiresAt <= input.now) {
+      return { status: "invalid" };
     }
 
-    this.records.set(id, { ...current, tokenHash: next, expiresAt });
+    if (current.tokenHash === input.expectedTokenHash) {
+      this.records.set(input.sessionId, {
+        id: current.id,
+        userId: current.userId,
+        previousTokenHash: current.tokenHash,
+        rotatedAt: input.now,
+        ...input.next,
+      });
 
-    return true;
+      return { status: "rotated" };
+    }
+
+    if (current.previousTokenHash === input.expectedTokenHash
+      && current.rotatedAt >= input.reuseWindowStart) {
+      return { status: "concurrent", session: current };
+    }
+
+    this.records.delete(input.sessionId);
+
+    return { status: "reused" };
   }
 
   /** Deletes one session. */

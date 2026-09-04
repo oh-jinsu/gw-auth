@@ -6,16 +6,46 @@ export type SessionUser<
   claims: TClaims;
 };
 
-/** Persisted refresh-session state containing only a hash of the bearer token. */
-export type RefreshSession = {
+/** Persisted state needed to identify and reproduce one refresh token. */
+export type RefreshTokenState = {
+  tokenHash: string;
+  tokenId: string;
+  issuedAt: Date;
+  expiresAt: Date;
+};
+
+/** Persisted refresh-session state containing no bearer token plaintext. */
+export type RefreshSession = RefreshTokenState & {
   id: string;
   userId: string;
-  tokenHash: string;
-  expiresAt: Date;
+  previousTokenHash: string | null;
+  rotatedAt: Date;
 };
 
 /** New refresh-session value persisted during initial token issuance. */
 export type NewRefreshSession = RefreshSession;
+
+/** Atomic refresh-rotation input including the accepted concurrency boundary. */
+export type RotateRefreshSessionInput = {
+  /** Session family and verified user binding submitted by the refresh token. */
+  sessionId: string;
+  userId: string;
+
+  /** Hash of the presented bearer and metadata for the proposed replacement. */
+  expectedTokenHash: string;
+  next: RefreshTokenState;
+
+  /** Exact decision time and inclusive start of the accepted overlap window. */
+  now: Date;
+  reuseWindowStart: Date;
+};
+
+/** Result of atomically classifying and applying one refresh attempt. */
+export type RotateRefreshSessionResult =
+  | { status: "rotated" }
+  | { status: "concurrent"; session: RefreshSession }
+  | { status: "invalid" }
+  | { status: "reused" };
 
 /** Loads the current user and authorization claims independently of session storage. */
 export interface SessionUserRepository<
@@ -33,13 +63,10 @@ export interface SessionRepository {
   /** Finds a refresh session by its random session identifier. */
   findRefreshSession(sessionId: string): Promise<RefreshSession | undefined>;
 
-  /** Atomically replaces the hash only when the expected hash still matches. */
+  /** Atomically rotates, accepts immediate prior-token overlap, or revokes reuse. */
   rotateRefreshSession(
-    sessionId: string,
-    expectedTokenHash: string,
-    nextTokenHash: string,
-    expiresAt: Date,
-  ): Promise<boolean>;
+    input: RotateRefreshSessionInput,
+  ): Promise<RotateRefreshSessionResult>;
 
   /** Deletes exactly one refresh session. */
   deleteRefreshSession(sessionId: string): Promise<void>;

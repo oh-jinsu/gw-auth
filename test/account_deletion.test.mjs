@@ -126,7 +126,7 @@ function sessionRepository() {
     findSessionUser: async () => undefined,
     createRefreshSession: async () => {},
     findRefreshSession: async () => undefined,
-    rotateRefreshSession: async () => false,
+    rotateRefreshSession: async () => ({ status: "invalid" }),
     deleteRefreshSession: async () => {},
     deleteExpiredRefreshSessions: async () => 0,
   };

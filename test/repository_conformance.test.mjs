@@ -39,7 +39,7 @@ test("validates PasswordResetRepository security invariants", async () => {
   }));
 });
 
-/** In-memory session repository that implements atomic compare-and-swap. */
+/** In-memory session repository implementing the atomic rotation contract. */
 class MemorySessionRepository {
   records = new Map();
 
@@ -53,17 +53,34 @@ class MemorySessionRepository {
     return this.records.get(id);
   }
 
-  /** Replaces a matching token hash once. */
-  async rotateRefreshSession(id, expectedHash, nextHash, expiresAt) {
-    const current = this.records.get(id);
+  /** Atomically rotates, accepts immediate overlap, or revokes stale reuse. */
+  async rotateRefreshSession(input) {
+    const current = this.records.get(input.sessionId);
 
-    if (!current || current.tokenHash !== expectedHash) {
-      return false;
+    if (!current || current.userId !== input.userId || current.expiresAt <= input.now) {
+      return { status: "invalid" };
     }
 
-    this.records.set(id, { ...current, tokenHash: nextHash, expiresAt });
+    if (current.tokenHash === input.expectedTokenHash) {
+      this.records.set(input.sessionId, {
+        id: current.id,
+        userId: current.userId,
+        previousTokenHash: current.tokenHash,
+        rotatedAt: input.now,
+        ...input.next,
+      });
 
-    return true;
+      return { status: "rotated" };
+    }
+
+    if (current.previousTokenHash === input.expectedTokenHash
+      && current.rotatedAt >= input.reuseWindowStart) {
+      return { status: "concurrent", session: current };
+    }
+
+    this.records.delete(input.sessionId);
+
+    return { status: "reused" };
   }
 
   /** Deletes one refresh session. */

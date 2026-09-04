@@ -97,7 +97,9 @@
 - Strip JWT-managed and identity/session claims from application claims before
   token issuance and omit them from the `AuthState` type.
 - Store only SHA-256 hashes of high-entropy refresh tokens and one-time credentials.
-- Rotate refresh tokens with compare-and-swap and revoke the session when reuse is detected.
+- Treat reuse of the immediately previous refresh token within 10 seconds as
+  normal concurrency and return the exact persisted winner. Revoke the session
+  family for reuse outside that window. Make classification and mutation atomic.
 - Bind browser OAuth callbacks to one-time state and an initiating-browser `HttpOnly` cookie. Use PKCE and nonce when supported by the provider.
 - Start Android Apple Browser API requests with server-generated state and
   nonce stored as a hashed, single-use transaction. Relay Apple's callback

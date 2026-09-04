@@ -498,11 +498,24 @@ await mobileSession.refresh({ refreshToken });
 await mobileSession.logout({ refreshToken });
 ```
 
-Refresh tokens rotate using repository compare-and-swap. Reusing a rotated
-token revokes its session family. Browser logout returns matching cookie
-deletions even when no refresh cookie is present. A terminal browser refresh
-failure also returns access and refresh cookie deletions; adapters must apply
-those effects on the error branch instead of interpreting error codes.
+Refresh tokens rotate through one atomic repository operation. Requests using
+the immediately previous token within 10 seconds are treated as normal overlap
+from concurrent RSC or API work and receive the exact same current refresh
+token. Reuse outside that window revokes the session family. This decision must
+be persisted and atomic; a process-local lock does not protect multiple server
+instances.
+
+`RefreshSession` stores the current token hash, its `jti` and exact JWT
+timestamps, the exact rotation time, plus only the previous token hash. The
+bearer token itself is never stored. `rotateRefreshSession` must atomically
+return `rotated`, `concurrent`, `invalid`, or `reused`; the `reused` branch must
+delete the row before it returns. Run `assertSessionRepositoryConformance`
+against the implementation.
+
+Browser logout returns matching cookie deletions even when no refresh cookie
+is present. A terminal browser refresh failure also returns access and refresh
+cookie deletions; adapters must apply those effects on the error branch instead
+of interpreting error codes.
 
 Direct session verification intentionally returns the full access-token
 payload for server authorization. Use the core-owned conversion when exposing
@@ -1039,6 +1052,9 @@ tokens for the same provider identity. The password-reset fixture seeds one
 account, its active refresh sessions, and at least one unrelated user's active
 session. It exposes password-hash, target-session, and unrelated-session
 readers so the assertion can verify atomic completion without over-revocation.
+The session fixture verifies that one concurrent refresh rotates, the loser
+receives the persisted winner, and prior-token reuse after 10 seconds revokes
+the family.
 The account-deletion fixture seeds one active account with sessions and at
 least one Apple revocation. Its state reader lets the assertion verify atomic
 pending state, session revocation, idempotent provider completion, and final

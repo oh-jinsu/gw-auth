@@ -97,6 +97,24 @@ export class JWTManager<TPayload extends JWTPayload> {
       : token;
   }
 
+  /** Recreates a token with explicit timestamps from trusted persisted metadata. */
+  async signAt(payload: JwtSignPayload<TPayload>, issuedAt: Date, expiresAt: Date) {
+    const claims = { ...payload, tokenUse: this.tokenUse } as JWTPayload;
+    const token = await resultFrom(() =>
+      new SignJWT(claims)
+        .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+        .setIssuedAt(toNumericDate(issuedAt))
+        .setIssuer(this.issuer)
+        .setAudience(this.audience)
+        .setExpirationTime(toNumericDate(expiresAt))
+        .sign(this.key),
+    );
+
+    return token.isErr
+      ? authError("TOKEN_SIGNING_FAILED", "토큰을 생성하지 못했습니다.", token.error)
+      : token;
+  }
+
   /** Extracts an expiration time only for cookies created from freshly signed tokens. */
   static getExpirationTime(token: string) {
     const decoded = resultFrom(() => decodeJwt(token));
@@ -111,6 +129,11 @@ export class JWTManager<TPayload extends JWTPayload> {
 
     return ok(new Date(decoded.value.exp * 1000));
   }
+}
+
+/** Converts a JavaScript timestamp to the integer NumericDate used by JWTs. */
+function toNumericDate(value: Date) {
+  return Math.floor(value.getTime() / 1000);
 }
 
 /** Validates required token-manager configuration before any token is handled. */

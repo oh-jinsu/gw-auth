@@ -1,5 +1,48 @@
 # Migrating gw-auth
 
+## Migrating from 0.9.0 to 0.10.0
+
+`SessionRepository` now owns the complete atomic decision for concurrent
+refreshes and stale-token replay. Add the following non-secret fields to each
+refresh-session row:
+
+```ts
+type RefreshSession = {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  tokenId: string;
+  issuedAt: Date;
+  expiresAt: Date;
+  previousTokenHash: string | null;
+  rotatedAt: Date;
+};
+```
+
+The bearer token remains hash-only. `tokenId`, `issuedAt`, and `expiresAt` are
+the current refresh JWT's exact `jti`, `iat`, and `exp` values, allowing
+`gw-auth` to reproduce the same signed winner without storing plaintext.
+`rotatedAt` records the exact successful rotation time used for the 10-second
+overlap decision.
+
+Replace the boolean compare-and-swap method with the object-based
+`rotateRefreshSession(input)`. In one transaction or equivalent atomic
+operation, implement these branches in order:
+
+1. Return `invalid` when the row is absent, expired, or belongs to another user.
+2. When the current hash matches `expectedTokenHash`, persist `input.next`, move
+   the current hash to `previousTokenHash`, set `rotatedAt` to `input.now`, and
+   return `rotated`.
+3. When only `previousTokenHash` matches and `rotatedAt` is on or after
+   `reuseWindowStart`, return `concurrent` with that current row unchanged.
+4. Otherwise delete the row and return `reused`.
+
+Run `assertSessionRepositoryConformance` against the real implementation. Since
+existing rows do not have reproducible current-token metadata, revoke them
+during the schema rollout unless the application implements an explicit
+transition. Newly issued refresh JWTs omit application claims; this does not
+change access-token or `AuthState` claims.
+
 ## Migrating from 0.8.0 to 0.9.0
 
 Next.js applications can bind the shared session facade once instead of

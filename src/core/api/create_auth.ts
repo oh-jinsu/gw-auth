@@ -124,11 +124,11 @@ function createContext<TClaims extends Record<string, unknown>>(
     validatePayload: isSessionAccessPayload<TClaims>,
   });
 
-  const refresh = new JWTManager<SessionRefreshPayload<TClaims>>({
+  const refresh = new JWTManager<SessionRefreshPayload>({
     ...options.tokens.refresh,
     ...common,
     tokenUse: "refresh",
-    validatePayload: isSessionRefreshPayload<TClaims>,
+    validatePayload: isSessionRefreshPayload,
   });
 
   const sessions = new SessionAuthService(
@@ -170,9 +170,7 @@ function isSessionAccessPayload<TClaims extends Record<string, unknown>>(
 }
 
 /** Validates the refresh-token fields owned by the package. */
-function isSessionRefreshPayload<TClaims extends Record<string, unknown>>(
-  payload: JWTPayload,
-): payload is SessionRefreshPayload<TClaims> {
+function isSessionRefreshPayload(payload: JWTPayload): payload is SessionRefreshPayload {
   return payload.tokenUse === "refresh"
     && typeof payload.userId === "string"
     && typeof payload.sessionId === "string"

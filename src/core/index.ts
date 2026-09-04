@@ -40,6 +40,9 @@ export type {
 export type {
   NewRefreshSession,
   RefreshSession,
+  RefreshTokenState,
+  RotateRefreshSessionInput,
+  RotateRefreshSessionResult,
   SessionRepository,
   SessionUser,
   SessionUserRepository,

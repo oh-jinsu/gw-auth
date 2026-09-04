@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.0 - 2026-09-04
+
+- Made refresh rotation idempotent for requests that reuse the immediately
+  previous token within 10 seconds, returning the exact persisted winning
+  refresh token instead of revoking a healthy session during RSC/API races.
+- Expanded `SessionRepository` with the current token's non-secret issuance
+  metadata, previous token hash, and one atomic rotation classification result.
+- Removed application claims from newly issued refresh-token payloads; current
+  user claims remain loaded at refresh time and are carried only by access
+  tokens and browser-safe auth state.
+
 ## 0.9.0 - 2026-09-03
 
 - Added `createAuthResolver` with configurable `cookies()` and mixed-transport

@@ -35,6 +35,23 @@ test("returns browser-safe state and structured HttpOnly cookie effects", async 
   assert.equal(operation.cookies.every((cookie) => cookie.httpOnly), true);
 });
 
+test("sets one refresh-cookie winner for concurrent browser refreshes", async () => {
+  const { auth, password } = await testAuth();
+  const login = await auth.password({ repository: password }).mobile().login({
+    id: "member",
+    password: "secret",
+  });
+  const browser = auth.session.browser();
+  const input = { cookies: { auth_refresh: login.value.refreshToken } };
+  const results = await Promise.all(Array.from({ length: 10 }, () => browser.refresh(input)));
+  const refreshValues = results.map(({ cookies }) =>
+    cookies.find(({ name }) => name === "auth_refresh")?.value);
+
+  assert.equal(results.every(({ result }) => result.isOk), true);
+  assert.equal(results.every(({ cookies }) => cookies.every(({ operation }) => operation === "set")), true);
+  assert.equal(new Set(refreshValues).size, 1);
+});
+
 test("returns bearer tokens only from the mobile projection", async () => {
   const { auth, password } = await testAuth();
   const mobile = auth.password({ repository: password }).mobile();
@@ -229,17 +246,34 @@ class MemorySessionRepository {
     return this.records.get(sessionId);
   }
 
-  /** Rotates a token hash using compare-and-swap semantics. */
-  async rotateRefreshSession(sessionId, expectedHash, nextHash, expiresAt) {
-    const current = this.records.get(sessionId);
+  /** Atomically rotates, accepts immediate overlap, or revokes stale reuse. */
+  async rotateRefreshSession(input) {
+    const current = this.records.get(input.sessionId);
 
-    if (!current || current.tokenHash !== expectedHash) {
-      return false;
+    if (!current || current.userId !== input.userId || current.expiresAt <= input.now) {
+      return { status: "invalid" };
     }
 
-    this.records.set(sessionId, { ...current, tokenHash: nextHash, expiresAt });
+    if (current.tokenHash === input.expectedTokenHash) {
+      this.records.set(input.sessionId, {
+        id: current.id,
+        userId: current.userId,
+        previousTokenHash: current.tokenHash,
+        rotatedAt: input.now,
+        ...input.next,
+      });
 
-    return true;
+      return { status: "rotated" };
+    }
+
+    if (current.previousTokenHash === input.expectedTokenHash
+      && current.rotatedAt >= input.reuseWindowStart) {
+      return { status: "concurrent", session: current };
+    }
+
+    this.records.delete(input.sessionId);
+
+    return { status: "reused" };
   }
 
   /** Deletes one refresh session. */

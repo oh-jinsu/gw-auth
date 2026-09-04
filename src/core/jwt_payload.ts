@@ -26,8 +26,10 @@ export type SessionAccessPayload<
 
 /** Verified rotating refresh-token claims. */
 export type SessionRefreshPayload<
-  TClaims extends Record<string, unknown> = Record<string, unknown>,
-> = JWTPayload & AuthState<TClaims> & {
+  _TClaims extends Record<string, unknown> = Record<string, unknown>,
+> = JWTPayload & {
+  userId: string;
+  sessionId: string;
   tokenUse: "refresh";
   jti: string;
 };
