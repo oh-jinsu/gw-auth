@@ -49,6 +49,10 @@
   requests, but mutation boundaries must authenticate and authorize themselves.
   Core browser refresh operations decide whether failed sessions require cookie
   deletion; adapters apply returned effects and never classify refresh codes.
+- Document `withAuth` as required consumer wiring when Server Components read
+  access-token state and the browser session must continue beyond access-token
+  expiry. Server Component reads remain non-mutating; the Proxy owns the
+  writable page-navigation refresh boundary.
 - Expose feature-first composition such as
   `auth.social({ repository }).google(credentials).browser(options)`.
 - Configure only shared session, token, and browser-cookie policy in

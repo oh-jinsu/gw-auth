@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.1 - 2026-09-05
+
+- Clarified that Next.js applications rendering authentication in Server
+  Components need the `withAuth` Proxy to keep browser sessions signed in after
+  access-token expiry.
+
 ## 0.10.0 - 2026-09-04
 
 - Made refresh rotation idempotent for requests that reuse the immediately

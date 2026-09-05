@@ -109,6 +109,12 @@ Cookie configuration is optional. Defaults are `Secure`, `HttpOnly`,
 be disabled. For example, `serviceName: "my-service"` produces
 `my-service_access_token` and `my-service_refresh_token`.
 
+Next.js applications that render authenticated state in Server Components must
+also configure the [`withAuth` Proxy](#server-auth-and-proxy) when users should
+remain signed in after the access token expires. Server Component reads cannot
+write rotated cookies, so a refresh boundary is required even while the refresh
+cookie remains valid.
+
 Existing services may override a cookie name during migration:
 
 ```ts
@@ -898,6 +904,14 @@ that header, `request()` uses the refresh-capable cookie path. It authenticates
 only; application Route Handlers remain responsible for authorization and
 Origin or CSRF enforcement.
 
+> **Required for continuous browser sessions:** `getAuth` and
+> `cookies({ refresh: false })` cannot rotate cookies during Server Component
+> rendering. If authenticated pages should remain signed in beyond the access
+> token lifetime, install the `withAuth` Proxy below. Without that writable
+> boundary, a valid refresh cookie remains unused during page navigation and
+> the Server Component reports a guest until a Route Handler or Server Action
+> performs refresh.
+
 Use `getAuth` when a Server Component needs verified access-token state. This
 replaces decoding a cookie directly in application code.
 
@@ -954,10 +968,13 @@ export async function POST(request: Request) {
 }
 ```
 
-`withAuth` gives an application-owned Proxy callback the verified access
-payload. It attempts refresh only for GET and HEAD requests, then redirects once
-to the same URL with rotated cookies. Server Actions and other mutations must
-authenticate and authorize again inside their own execution boundary.
+Use `withAuth` as the writable refresh boundary for applications that render
+authenticated state in Server Components. It attempts refresh only for GET and
+HEAD requests, then redirects once to the same URL with rotated cookies before
+rendering continues. Its application-owned callback receives the verified
+access payload for optional optimistic routing. Server Actions and other
+mutations must authenticate and authorize again inside their own execution
+boundary.
 
 ```ts
 import { NextResponse } from "next/server";
@@ -965,13 +982,7 @@ import { withAuth } from "gw-auth/nextjs";
 
 export const proxy = withAuth(
   auth.session.browser(),
-  async (request, _event, currentAuth) => {
-    if (request.nextUrl.pathname.startsWith("/admin") && !currentAuth) {
-      return NextResponse.redirect(new URL("/login", request.url));
-    }
-
-    return NextResponse.next();
-  },
+  () => NextResponse.next(),
 );
 
 export const config = {
